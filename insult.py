@@ -1,4 +1,5 @@
 import discord
+import config
 from discord.ext import commands
 import random
 
@@ -29,4 +30,4 @@ async def insult(ctx, user: discord.ext.commands.MemberConverter):
 async def hello(ctx):
     await ctx.send(f"Hello {ctx.author.mention}!")
 
-bot.run('MTExMTg0NTgyNjA2NzY5NzczOA.GlTnnb.fOYZ84P_7oYvt0tngPNLBl02xZ4jYMzio1smNA')
+bot.run(config.BOT_TOKEN)
