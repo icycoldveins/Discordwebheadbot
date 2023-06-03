@@ -1,2 +1,2 @@
-worker: python -u insult.py
+worker: python insult.py
  
