@@ -31,3 +31,4 @@ async def hello(ctx):
     await ctx.send(f"Hello {ctx.author.mention}!")
 
 bot.run(config.BOT_TOKEN)
+d
