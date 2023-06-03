@@ -1,1 +1,2 @@
-web: python -u insult.py
+worker: python -u insult.py
+ 
