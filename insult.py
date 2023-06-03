@@ -1,6 +1,7 @@
 import discord
 import config
 from discord.ext import commands
+import os
 import random
 
 intents = discord.Intents.default()
@@ -30,5 +31,4 @@ async def insult(ctx, user: discord.ext.commands.MemberConverter):
 async def hello(ctx):
     await ctx.send(f"Hello {ctx.author.mention}!")
 
-bot.run(config.BOT_TOKEN)
-d
+bot.run(os.environ['DISCORD_TOKEN'])
