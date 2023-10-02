@@ -4,6 +4,7 @@ import random
 import discord
 from discord.ext import commands, tasks
 
+
 import config
 from datetime import datetime, timedelta  # Add this line to import datetime
 
@@ -89,17 +90,27 @@ async def roll(ctx, num_dice: int = 1, num_faces: int = 6):
 @bot.command()
 async def conch(ctx, question: str):
     answers = [
-        "Maybe someday.",
-        "Nothing.",
-        "Neither.",
-        "I don't think so.",
-        "No.",
-        "Yes.",
-        "Try asking again.",
-        "You cannot get to the top by sitting on your bottom.",
-        "I see a new sauce in your future.",
-        "Ask next time.",
-        "Follow the seahorse."
+       "It is certain.",
+    "It is decidedly so.",
+    "Without a doubt.",
+    "Yes, definitely.",
+    "You may rely on it.",
+    "As I see it, yes.",
+    "Most likely.",
+    "Outlook good.",
+    "Yes.",
+    "Signs point to yes.",
+    "Reply hazy, try again.",
+    "Ask again later.",
+    "Better not tell you now.",
+    "Cannot predict now.",
+    "Concentrate and ask again.",
+    "Don't count on it.",
+    "My reply is no.",
+    "My sources say no.",
+    "Outlook not so good.",
+    "Very doubtful.",
+    "Fuck No."
     ]
     answer = random.choice(answers)
     await ctx.send(f"The Magic Conch says: {answer}")
@@ -107,43 +118,5 @@ async def conch(ctx, question: str):
 @bot.command()
 async def hello(ctx):
     await ctx.send(f"Hello {ctx.author.mention}!")
-@bot.command()
-async def remindme(ctx, time: str, *, reminder: str):
-    """Set a reminder in minutes/hours/days/months/years."""
-    time_value = int(time[:-1])
-    time_unit = time[-1]
-    reminder_time = calculate_reminder_time(time_value, time_unit)
-    reminders.append((reminder_time, reminder, ctx.author))
-    await ctx.send(f"Okay, I will remind you in {time} about: {reminder}")
-
-def calculate_reminder_time(value, unit):
-    now = datetime.now()
-    if unit == 'm':
-        return now + timedelta(minutes=value)
-    elif unit == 'h':
-        return now + timedelta(hours=value)
-    elif unit == 'd':
-        return now + timedelta(days=value)
-    elif unit == 'M':
-        return now.replace(month=now.month + value)
-    elif unit == 'y':
-        return now.replace(year=now.year + value)
-
-@tasks.loop(seconds=10)
-async def check_reminders():
-    if len(reminders) > 0:
-        for reminder in reminders:
-            reminder_time, reminder_text, author = reminder
-            if reminder_time <= datetime.now():
-                user = bot.get_user(author.id)
-                await user.send(f"Reminder: {reminder_text}")
-                reminders.remove(reminder)
-
-@check_reminders.before_loop
-async def before_check_reminders():
-    await bot.wait_until_ready()
-
-check_reminders.start()
-
 bot.run(config.BOT_TOKEN)
  
