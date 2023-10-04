@@ -29,6 +29,7 @@ class Conch(commands.Cog):
             "My sources say no.",
             "Outlook not so good.",
             "Very doubtful.",
+            "No",
         ]
         answer = random.choice(answers)
         await ctx.send(f"The Magic Conch says: {answer}")
