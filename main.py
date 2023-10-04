@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-import config
 intents = discord.Intents.all()
 # Create a bot instance
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -21,4 +20,4 @@ async def reload(ctx, extension_name: str):
         await ctx.send(f"Error reloading {extension_name}: {e}")
 
 # Start the bot
-bot.run(config.BOT_TOKEN)
+bot.run(BOT_TOKEN)
