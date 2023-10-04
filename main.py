@@ -1,7 +1,12 @@
 import discord
 from discord.ext import commands
-import config
+import os
 intents = discord.Intents.all()
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
 # Create a bot instance
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -21,4 +26,4 @@ async def reload(ctx, extension_name: str):
         await ctx.send(f"Error reloading {extension_name}: {e}")
 
 # Start the bot
-bot.run(config.BOT_TOKEN)
+bot.run(BOT_TOKEN)
