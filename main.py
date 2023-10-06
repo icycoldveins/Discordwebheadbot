@@ -16,6 +16,8 @@ async def on_ready():
     print(f"Logged in as {bot.user.name} - {bot.user.id}")
     await bot.load_extension("cogs.conch")
     await bot.load_extension("cogs.roll")
+    await bot.load_extension("cogs.trivia")
+
 
 
 # Command to reload an extension (useful for development)
