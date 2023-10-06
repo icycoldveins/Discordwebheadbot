@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-import os
 intents = discord.Intents.all()
 import os
 from dotenv import load_dotenv
@@ -17,6 +16,7 @@ async def on_ready():
     await bot.load_extension("cogs.conch")
     await bot.load_extension("cogs.roll")
     await bot.load_extension("cogs.trivia")
+    await bot.load_extension("cogs.spotify")
 
 
 
