@@ -15,6 +15,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f"Logged in as {bot.user.name} - {bot.user.id}")
     await bot.load_extension("cogs.conch")
+    await bot.load_extension("cogs.roll")
+
 
 # Command to reload an extension (useful for development)
 @bot.command()
