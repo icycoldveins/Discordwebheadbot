@@ -8,6 +8,17 @@ class Roll(commands.Cog):
 
     @commands.command()
     async def roll(self, ctx):
+        """
+        Roll a six-sided die.
+
+        This command simulates rolling a six-sided die and returns the result.
+
+        Usage:
+        !roll
+
+        Example:
+        !roll
+        """
         result = random.randint(1, 6)
         await ctx.send(f'You rolled a {result}!')
 

@@ -10,6 +10,23 @@ class Trivia(commands.Cog):
 
     @commands.command()
     async def trivia(self, ctx, category=None):
+        """
+        Start a trivia game.
+
+        This command fetches a trivia question from the Open Trivia Database and presents it to the user.
+        
+        Usage:
+        !trivia [category]
+
+        Arguments:
+        - category (optional): The category of trivia questions to fetch.
+
+        Example:
+        !trivia
+        !trivia general_knowledge
+        """
+        # Rest of your command logic here...
+
         # Forming the API endpoint
         endpoint = "https://opentdb.com/api.php?amount=10"
         if category:

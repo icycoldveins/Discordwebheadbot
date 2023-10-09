@@ -8,6 +8,22 @@ class Conch(commands.Cog):
 
     @commands.command()
     async def conch(self, ctx, question: str):
+        """
+        Ask the Magic Conch a question.
+
+        This command simulates asking the Magic Conch a question and receiving a random answer.
+
+        Usage:
+        !conch <question>
+
+        Arguments:
+        - question (str): The question you want to ask the Magic Conch.
+
+        Example:
+        !conch Will it rain tomorrow?
+        """
+        # Rest of your command logic here...
+
         answers = [
            "It is certain.",
             "It is decidedly so.",

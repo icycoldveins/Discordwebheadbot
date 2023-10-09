@@ -16,6 +16,17 @@ class MusicRecommendation(commands.Cog):
 
     @commands.command()
     async def recommend(self, ctx, *, query):
+        """
+        Get music recommendations based on a song or artist.
+
+        Arguments:
+        - query (str): The song or artist you want recommendations for.
+
+        Example usage:
+        !recommend Queen
+        """
+        # Rest of your command logic here...
+
         # Search for the track or artist on Spotify
         results = self.sp.search(q=query, limit=1, type='track')  # Start by looking for tracks
 
