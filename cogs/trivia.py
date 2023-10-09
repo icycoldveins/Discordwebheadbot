@@ -7,7 +7,26 @@ import random
 class Trivia(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+    @commands.command()
+    async def triviacategories(self, ctx):
+        """
+        Display available trivia categories.
+        """
+        endpoint = "https://opentdb.com/api_category.php"
+        response = requests.get(endpoint)
+        data = response.json()
 
+        categories = data.get("trivia_categories", [])
+
+        if not categories:
+            await ctx.send("Couldn't fetch trivia categories.")
+            return
+
+        message = "Available Trivia Categories:\n"
+        for cat in categories:
+            message += f"- {cat['name']} (ID: {cat['id']})\n"
+
+        await ctx.send(message)
     @commands.command()
     async def trivia(self, ctx, category=None):
         """
