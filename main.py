@@ -20,7 +20,6 @@ async def on_ready():
 
 
 
-# Command to reload an extension (useful for development)
 @bot.command()
 async def reload(ctx, extension_name: str):
     try:
