@@ -1,6 +1,18 @@
 from discord.ext import commands
 from spotipy import Spotify, SpotifyClientCredentials
 import os
+from spotipy.oauth2 import SpotifyOAuth
+
+
+def setup_spotify_client(self):
+    """Set up the Spotify client with Authorization Code Flow."""
+    auth_manager = SpotifyOAuth(
+        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
+        redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
+        scope="playlist-modify-public playlist-modify-private"
+    )
+    return Spotify(auth_manager=auth_manager)
 
 
 class SpotifyPlaylist(commands.Cog):
@@ -17,12 +29,14 @@ class SpotifyPlaylist(commands.Cog):
         self.playlist_link = os.getenv("SPOTIFY_PLAYLIST_LINK")
 
     def setup_spotify_client(self):
-        """Set up the Spotify client with Client Credentials Flow."""
-        client_credentials_manager = SpotifyClientCredentials(
+        """Set up the Spotify client with Authorization Code Flow."""
+        auth_manager = SpotifyOAuth(
             client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
+            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
+            redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
+            scope="playlist-modify-public playlist-modify-private"
         )
-        return Spotify(client_credentials_manager=client_credentials_manager)
+        return Spotify(auth_manager=auth_manager)
 
     # Helper function to check if a track is in the playlist
     def is_track_in_playlist(self, track_uri):
