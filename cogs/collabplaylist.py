@@ -1,5 +1,5 @@
 from discord.ext import commands
-from spotipy import Spotify, oauth2
+from spotipy import Spotify, SpotifyClientCredentials
 import os
 
 
@@ -13,15 +13,12 @@ class SpotifyPlaylist(commands.Cog):
         self.playlist_link = os.getenv("SPOTIFY_PLAYLIST_LINK")
 
     def setup_spotify_client(self):
-        """Set up the Spotify client with OAuth."""
-        spotify_oauth = oauth2.SpotifyOAuth(
+        """Set up the Spotify client with Client Credentials Flow."""
+        client_credentials_manager = SpotifyClientCredentials(
             client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
-            redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
-
-            scope="playlist-modify-public playlist-modify-private"
+            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
         )
-        return Spotify(auth_manager=spotify_oauth)
+        return Spotify(client_credentials_manager=client_credentials_manager)
 
     @commands.command()
     async def addtoplaylist(self, ctx, *, song_name: str):
