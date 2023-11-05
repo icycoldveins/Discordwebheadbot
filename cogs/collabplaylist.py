@@ -40,7 +40,13 @@ class SpotifyPlaylist(commands.Cog):
 
     @commands.command()
     async def addtoplaylist(self, ctx, *, song_name: str):
-        """Add a song to a Spotify playlist."""
+        """
+        Add a song to the Spotify playlist.
+
+        Usage: !addtoplaylist <song name>
+        Example: !addtoplaylist Never Gonna Give You Up
+        This will search for the song on Spotify and add it to the playlist if it's not already present.
+        """
         try:
             # Search for the song to get its URI
             results = self.spotify_client.search(
@@ -69,12 +75,23 @@ class SpotifyPlaylist(commands.Cog):
 
     @commands.command()
     async def showplaylist(self, ctx):
-        """Send the playlist link to the Discord chat."""
+        """
+        Send the playlist link to the Discord chat.
+
+        Usage: !showplaylist
+        This command will provide you with the link to the Spotify playlist.
+        """
         await ctx.send(f"Here's the link to our Spotify playlist: {self.playlist_link}")
 
     @commands.command()
     async def deletefromplaylist(self, ctx, *, song_name: str):
-        """Delete a song from a Spotify playlist."""
+        """
+        Delete a song from the Spotify playlist.
+
+        Usage: !deletefromplaylist <song name>
+        Example: !deletefromplaylist Never Gonna Give You Up
+        If the song is in the playlist, it will be removed.
+        """
         try:
             # Search for the song to get its URI
             results = self.spotify_client.search(
