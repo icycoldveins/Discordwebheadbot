@@ -19,7 +19,6 @@ async def on_ready():
     await bot.load_extension("cogs.roll")
     await bot.load_extension("cogs.trivia")
     await bot.load_extension("cogs.spotify")
-    await bot.load_extension("cogs.collabplaylist")
 
 
 @bot.command()
