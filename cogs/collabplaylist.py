@@ -2,6 +2,7 @@ from discord.ext import commands
 from spotipy import Spotify, oauth2
 import os
 
+
 class SpotifyPlaylist(commands.Cog):
     """Cog for interacting with a Spotify playlist."""
 
@@ -17,7 +18,7 @@ class SpotifyPlaylist(commands.Cog):
             client_id=os.getenv("SPOTIFY_CLIENT_ID"),
             client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
             redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
-            
+
             scope="playlist-modify-public playlist-modify-private"
         )
         return Spotify(auth_manager=spotify_oauth)
@@ -26,23 +27,53 @@ class SpotifyPlaylist(commands.Cog):
     async def addtoplaylist(self, ctx, *, song_name: str):
         """Add a song to a Spotify playlist."""
         try:
-            results = self.spotify_client.search(q=song_name, limit=1, type='track')
-            
+            results = self.spotify_client.search(
+                q=song_name, limit=1, type='track')
+
             if not results['tracks']['items']:
                 await ctx.send(f"No track found for '{song_name}'.")
                 return
 
             track_uri = results['tracks']['items'][0]['uri']
-            self.spotify_client.playlist_add_items(self.playlist_id, [track_uri])
+            self.spotify_client.playlist_add_items(
+                self.playlist_id, [track_uri])
             await ctx.send(f"Added '{song_name}' to the playlist.")
 
         except Exception as e:
             # Log the error for debugging purposes
             print(f"Error adding track to Spotify playlist: {e}")
             await ctx.send("An error occurred while adding the track to the playlist.")
+
     @commands.command()
     async def showplaylist(self, ctx):
         """Send the playlist link to the Discord chat."""
         await ctx.send(f"Here's the link to our Spotify playlist: {self.playlist_link}")
+
+    @commands.command()
+    async def deletefromplaylist(self, ctx, *, song_name: str):
+        """Delete a song from a Spotify playlist."""
+        try:
+            # Search for the song to get its URI
+            results = self.spotify_client.search(
+                q=song_name, limit=1, type='track')
+
+            if not results['tracks']['items']:
+                await ctx.send(f"No track found for '{song_name}'.")
+                return
+
+            # Get the track URI
+            track_uri = results['tracks']['items'][0]['uri']
+
+            # Remove all occurrences of the specified tracks from the playlist
+            self.spotify_client.playlist_remove_all_occurrences_of_items(
+                self.playlist_id, [track_uri])
+            await ctx.send(f"Deleted '{song_name}' from the playlist.")
+
+        except Exception as e:
+            # Log the error for debugging purposes
+            print(f"Error deleting track from Spotify playlist: {e}")
+            await ctx.send("An error occurred while deleting the track from the playlist.")
+
+
 async def setup(bot):
     await bot.add_cog(SpotifyPlaylist(bot))
