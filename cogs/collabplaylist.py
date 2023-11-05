@@ -20,26 +20,38 @@ class SpotifyPlaylist(commands.Cog):
         )
         return Spotify(client_credentials_manager=client_credentials_manager)
 
-    @commands.command()
-    async def addtoplaylist(self, ctx, *, song_name: str):
-        """Add a song to a Spotify playlist."""
-        try:
-            results = self.spotify_client.search(
-                q=song_name, limit=1, type='track')
 
-            if not results['tracks']['items']:
-                await ctx.send(f"No track found for '{song_name}'.")
+@commands.command()
+async def addtoplaylist(self, ctx, *, song_name: str):
+    """Add a song to a Spotify playlist, ensuring no duplicates."""
+    try:
+        # Search for the song to get its URI
+        results = self.spotify_client.search(
+            q=song_name, limit=1, type='track')
+
+        if not results['tracks']['items']:
+            await ctx.send(f"No track found for '{song_name}'.")
+            return
+
+        track_uri = results['tracks']['items'][0]['uri']
+
+        # Get the current tracks in the playlist
+        current_tracks = self.spotify_client.playlist_tracks(self.playlist_id)
+
+        # Check if the song is already in the playlist
+        for item in current_tracks['items']:
+            if track_uri == item['track']['uri']:
+                await ctx.send(f"'{song_name}' is already in the playlist.")
                 return
 
-            track_uri = results['tracks']['items'][0]['uri']
-            self.spotify_client.playlist_add_items(
-                self.playlist_id, [track_uri])
-            await ctx.send(f"Added '{song_name}' to the playlist.")
+        # If the song is not in the playlist, add it
+        self.spotify_client.playlist_add_items(self.playlist_id, [track_uri])
+        await ctx.send(f"Added '{song_name}' to the playlist.")
 
-        except Exception as e:
-            # Log the error for debugging purposes
-            print(f"Error adding track to Spotify playlist: {e}")
-            await ctx.send("An error occurred while adding the track to the playlist.")
+    except Exception as e:
+        # Log the error for debugging purposes
+        print(f"Error adding track to Spotify playlist: {e}")
+        await ctx.send("An error occurred while adding the track to the playlist.")
 
     @commands.command()
     async def showplaylist(self, ctx):
