@@ -1,8 +1,8 @@
+from dotenv import load_dotenv
+import os
 import discord
 from discord.ext import commands
 intents = discord.Intents.all()
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -10,6 +10,8 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Load extension on bot startup
+
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name} - {bot.user.id}")
@@ -17,7 +19,7 @@ async def on_ready():
     await bot.load_extension("cogs.roll")
     await bot.load_extension("cogs.trivia")
     await bot.load_extension("cogs.spotify")
-
+    await bot.load_extension("cogs.collabplaylist")
 
 
 @bot.command()
