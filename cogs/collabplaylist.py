@@ -4,7 +4,11 @@ import os
 
 
 class SpotifyPlaylist(commands.Cog):
-    """Cog for interacting with a Spotify playlist."""
+    """Cog for interacting with a Spotify playlist. You can use the following commands:
+    - !addtoplaylist [song name]: Add a song to the playlist by providing the song name or a portion of its name.
+    - !showplaylist: Provides a link to the Spotify playlist.
+    - !deletefromplaylist [song name]: Remove a song from the playlist by providing the exact song name.
+    """
 
     def __init__(self, bot):
         self.bot = bot
@@ -20,38 +24,48 @@ class SpotifyPlaylist(commands.Cog):
         )
         return Spotify(client_credentials_manager=client_credentials_manager)
 
+    # Helper function to check if a track is in the playlist
+    def is_track_in_playlist(self, track_uri):
+        results = self.spotify_client.playlist_items(self.playlist_id)
+        while results:
+            track_uris = [item['track']['uri']
+                          for item in results['items'] if item['track']]
+            if track_uri in track_uris:
+                return True
+            if results['next']:
+                results = self.spotify_client.next(results)
+            else:
+                break
+        return False
 
-@commands.command()
-async def addtoplaylist(self, ctx, *, song_name: str):
-    """Add a song to a Spotify playlist, ensuring no duplicates."""
-    try:
-        # Search for the song to get its URI
-        results = self.spotify_client.search(
-            q=song_name, limit=1, type='track')
+    @commands.command()
+    async def addtoplaylist(self, ctx, *, song_name: str):
+        """Add a song to a Spotify playlist."""
+        try:
+            # Search for the song to get its URI
+            results = self.spotify_client.search(
+                q=song_name, limit=1, type='track')
 
-        if not results['tracks']['items']:
-            await ctx.send(f"No track found for '{song_name}'.")
-            return
+            if not results['tracks']['items']:
+                await ctx.send(f"No track found for '{song_name}'.")
+                return
 
-        track_uri = results['tracks']['items'][0]['uri']
+            track_uri = results['tracks']['items'][0]['uri']
 
-        # Get the current tracks in the playlist
-        current_tracks = self.spotify_client.playlist_tracks(self.playlist_id)
-
-        # Check if the song is already in the playlist
-        for item in current_tracks['items']:
-            if track_uri == item['track']['uri']:
+            # Check if the track is already in the playlist
+            if self.is_track_in_playlist(track_uri):
                 await ctx.send(f"'{song_name}' is already in the playlist.")
                 return
 
-        # If the song is not in the playlist, add it
-        self.spotify_client.playlist_add_items(self.playlist_id, [track_uri])
-        await ctx.send(f"Added '{song_name}' to the playlist.")
+            # Add the track to the playlist if it's not a duplicate
+            self.spotify_client.playlist_add_items(
+                self.playlist_id, [track_uri])
+            await ctx.send(f"Added '{song_name}' to the playlist.")
 
-    except Exception as e:
-        # Log the error for debugging purposes
-        print(f"Error adding track to Spotify playlist: {e}")
-        await ctx.send("An error occurred while adding the track to the playlist.")
+        except Exception as e:
+            # Log the error for debugging purposes
+            print(f"Error adding track to Spotify playlist: {e}")
+            await ctx.send("An error occurred while adding the track to the playlist.")
 
     @commands.command()
     async def showplaylist(self, ctx):
