@@ -19,6 +19,7 @@ To get started with this bot, follow these simple steps:
    ```
    BOT_TOKEN=your_bot_token_here
    SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
+   SPOTIFY_CLIENT_ID=your_spotify_client_id_here
    ```
 
 4. Run `main.py` to start the bot.
