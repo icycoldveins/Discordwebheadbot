@@ -22,7 +22,6 @@ async def on_ready():
     await bot.load_extension("cogs.leetcode")
 
 
-
 @bot.command()
 async def reload(ctx, extension_name: str):
     try:
