@@ -10,7 +10,8 @@ load_dotenv()
 class ParticipationCounter(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.client = MongoClient('MONGO_URL')
+        mongo_url = os.getenv('MONGO_URL')
+        self.client = MongoClient(mongo_url)
         self.db = self.client['ParticipationCount']
         self.collection = self.db['users']
 
