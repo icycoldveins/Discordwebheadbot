@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 import os
 import discord
 from discord.ext import commands
+import cogs.participation
+
 intents = discord.Intents.all()
 
 load_dotenv()
@@ -20,6 +22,7 @@ async def on_ready():
     await bot.load_extension("cogs.trivia")
     await bot.load_extension("cogs.spotify")
     await bot.load_extension("cogs.leetcode")
+    await bot.load_extension("cogs.participation")
 
 
 @bot.command()
