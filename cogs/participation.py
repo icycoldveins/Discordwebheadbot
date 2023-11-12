@@ -45,6 +45,16 @@ class ParticipationCounter(commands.Cog):
                                        '$set': {'count': count}})
             await ctx.send(f"{user.name} has participated {count} times.")
 
+    @commands.command(name='countp')
+    async def count_participations(self, ctx):
+        user_id = ctx.author.id
+        result = self.collection.find_one({'user_id': user_id})
+        if result:
+            count = result['count']
+            await ctx.send(f"You have participated {count} times.")
+        else:
+            await ctx.send("You haven't participated yet.")
+
     def cog_unload(self):
         self.client.close()
 
