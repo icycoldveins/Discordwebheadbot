@@ -7,7 +7,7 @@ class Leetcode(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
+    @commands.command(name='leetcodeuser')
     async def leetcode(self, ctx, username):
         url = f"https://leetcode-stats-api.herokuapp.com/{username}"
         response = requests.get(url)

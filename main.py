@@ -23,6 +23,8 @@ async def on_ready():
     await bot.load_extension("cogs.spotify")
     await bot.load_extension("cogs.leetcode")
     await bot.load_extension("cogs.participation")
+    await bot.load_extension("cogs.leetcoderandom")
+
 
 
 @bot.command()
