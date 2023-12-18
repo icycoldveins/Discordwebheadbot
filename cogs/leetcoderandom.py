@@ -21,7 +21,7 @@ class Problem:
 class Leetcodeq(commands.Cog):
     ...
 
-    @commands.command(name='problem')
+    @commands.command(name='leetcode')
     async def problem(self, ctx, difficulty=None):
         problemUrlBase = 'https://leetcode.com/problems/'
         headers = {'Accept': 'application/json'}
