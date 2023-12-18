@@ -64,7 +64,7 @@ class Leetcodeq(commands.Cog):
         embed = Embed(title=f"{problem.title} - {problem.difficulty.capitalize()}", url=problemUrlBase + problem.titleSlug, description=problem.description[:2048])
 
         # Split description into chunks of 1024 characters and add each chunk as a field in the embed
-        chunks = [problem.description[i:i+1024] for i in range(2048, len(problem.description), 1024)]
+        chunks = [problem.description[i:i+1024] for i in range(2000, len(problem.description), 1024)]
         for i, chunk in enumerate(chunks):
             embed.add_field(name=f"Description (cont'd {i+1})", value=chunk, inline=False)
 
