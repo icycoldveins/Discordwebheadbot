@@ -9,6 +9,7 @@ class Leetcode(commands.Cog):
 
     @commands.command(name='leetcodeuser')
     async def leetcode(self, ctx, username):
+        await ctx.send(f"Fetching stats for {username}...")
         url = f"https://leetcode-stats-api.herokuapp.com/{username}"
         response = requests.get(url)
         if response.status_code == 200:
