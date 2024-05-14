@@ -9,6 +9,7 @@ class Leetcode(commands.Cog):
 
     @commands.command(name='leetcodeuser')
     async def leetcode(self, ctx, username):
+        await ctx.send(f"Fetching stats for {username}...")
         url = f"https://leetcode-stats-api.herokuapp.com/{username}"
         response = requests.get(url)
         if response.status_code == 200:
@@ -18,11 +19,14 @@ class Leetcode(commands.Cog):
             total_medium_solved = data['mediumSolved']
             total_hard_solved = data['hardSolved']
 
-            await ctx.send(f"Total solved questions: {data['totalSolved']}")
-            await ctx.send(f"Easy problems solved: {total_easy_solved}")
-            await ctx.send(f"Medium problems solved: {total_medium_solved}")
-            await ctx.send(f"Hard problems solved: {total_hard_solved}")
-            await ctx.send(f"Acceptance rate: {data['acceptanceRate']}")
+            package = (f"Stats for {username}:\n"
+                       f"Total solved questions: {data['totalSolved']}\n"
+                       f"Easy problems solved: {total_easy_solved}\n"
+                       f"Medium problems solved: {total_medium_solved}\n"
+                       f"Hard problems solved: {total_hard_solved}\n"
+                       f"Acceptance rate: {data['acceptanceRate']}\n")
+
+            await ctx.send(package)
         else:
             await ctx.send(f"Error: {response.status_code}")
 
