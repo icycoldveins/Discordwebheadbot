@@ -1,0 +1,7 @@
+# flyctl launch added from .gitignore
+**/config.py
+**/.env
+**/.cache
+**/septa.py
+**/cogs/counter.db
+fly.toml

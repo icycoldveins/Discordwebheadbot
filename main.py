@@ -1,36 +1,49 @@
-from dotenv import load_dotenv
 import os
 import discord
 from discord.ext import commands
-import cogs.participation
+from dotenv import load_dotenv
 
-intents = discord.Intents.all()
-
+# Load environment variables
 load_dotenv()
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
+
+# Check if the BOT_TOKEN is loaded correctly
+if not BOT_TOKEN:
+    print("Error: BOT_TOKEN environment variable is not set.")
+    exit(1)
+
+# Define intents
+intents = discord.Intents.all()
+
 # Create a bot instance
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Load extension on bot startup
-
+async def load_extensions():
+    extensions = [
+        "cogs.conch",
+        "cogs.roll",
+        "cogs.trivia",
+        "cogs.spotify",
+        "cogs.leetcode",
+        "cogs.participation",
+        "cogs.leetcoderandom"
+    ]
+    for extension in extensions:
+        try:
+            await bot.load_extension(extension)
+            print(f"Loaded {extension} successfully.")
+        except Exception as e:
+            print(f"Failed to load {extension}: {e}")
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name} - {bot.user.id}")
-    await bot.load_extension("cogs.conch")
-    await bot.load_extension("cogs.roll")
-    await bot.load_extension("cogs.trivia")
-    await bot.load_extension("cogs.spotify")
-    await bot.load_extension("cogs.leetcode")
-    await bot.load_extension("cogs.participation")
-    await bot.load_extension("cogs.leetcoderandom")
-
-
+    await load_extensions()
 
 @bot.command()
 async def reload(ctx, extension_name: str):
     try:
-        bot.reload_extension(extension_name)
+        await bot.reload_extension(extension_name)
         await ctx.send(f"Reloaded {extension_name}!")
     except Exception as e:
         await ctx.send(f"Error reloading {extension_name}: {e}")
