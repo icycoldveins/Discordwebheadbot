@@ -3,3 +3,6 @@ config.py
 .cache
 septa.py
 cogs/counter.db
+myenv
+venv
+cogs/__pycache__

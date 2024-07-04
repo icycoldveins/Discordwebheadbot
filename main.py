@@ -51,3 +51,4 @@ async def reload(ctx, extension_name: str):
 
 # Start the bot
 bot.run(BOT_TOKEN)
+
