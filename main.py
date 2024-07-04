@@ -26,7 +26,8 @@ async def load_extensions():
         "cogs.spotify",
         "cogs.leetcode",
         "cogs.participation",
-        "cogs.leetcoderandom"
+        "cogs.leetcoderandom",
+        "cogs.calories"
     ]
     for extension in extensions:
         try:
