@@ -51,7 +51,9 @@ async def load_extensions():
         "cogs.conch",
         "cogs.urban",
         "cogs.discordstats",
-        "cogs.analytics"  # Add the Analytics cog
+        "cogs.analytics",
+        "cogs.horoscope",
+        "cogs.market"  # Add the Market cog
     ]
     for extension in extensions:
         try:
