@@ -2,10 +2,13 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from aiohttp import web
+import asyncio
 
 # Load environment variables
 load_dotenv()
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
+PORT = int(os.getenv('PORT', 10000))
 
 # Check if the BOT_TOKEN is loaded correctly
 if not BOT_TOKEN:
@@ -13,10 +16,26 @@ if not BOT_TOKEN:
     exit(1)
 
 # Define intents
-intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.message_content = True
 
 # Create a bot instance
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Create web app
+app = web.Application()
+
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+app.router.add_get("/", handle)
+
+async def run_web_server():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    print(f"Web server running on port {PORT}")
 
 async def load_extensions():
     extensions = [
@@ -40,6 +59,11 @@ async def load_extensions():
 async def on_ready():
     print(f"Logged in as {bot.user.name} - {bot.user.id}")
     await load_extensions()
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
 
 @bot.command()
 async def reload(ctx, extension_name: str):
@@ -49,6 +73,16 @@ async def reload(ctx, extension_name: str):
     except Exception as e:
         await ctx.send(f"Error reloading {extension_name}: {e}")
 
-# Start the bot
-bot.run(BOT_TOKEN)
+async def start_bot():
+    try:
+        await bot.start(BOT_TOKEN)
+    except KeyboardInterrupt:
+        await bot.close()
+
+# Run both the web server and the bot
+async def main():
+    await asyncio.gather(run_web_server(), start_bot())
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
