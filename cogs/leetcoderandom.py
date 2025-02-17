@@ -6,6 +6,7 @@ import random
 import json
 from bs4 import BeautifulSoup
 from discord import Embed
+from discord import app_commands
 
 class Problem:
     def __init__(self, problemObject, description=None):
@@ -19,57 +20,62 @@ class Problem:
 
 
 class Leetcodeq(commands.Cog):
-    ...
+    def __init__(self, bot):
+        self.bot = bot
 
-    @commands.command(name='leetcode')
-    async def problem(self, ctx, difficulty=None):
-        problemUrlBase = 'https://leetcode.com/problems/'
-        headers = {'Accept': 'application/json'}
-        async with aiohttp.ClientSession() as session:
-            async with session.get('https://leetcode.com/api/problems/all/', headers=headers) as resp:
-                data = await resp.text()
-                data = json.loads(data)
-        problems = [Problem(p) for p in data['stat_status_pairs']]
-        if difficulty:
-            problems = [p for p in problems if p.difficulty == difficulty]
-
-        if not problems:
-            await ctx.send("No problems found with the given criteria.")
-            return
-
-        problem = random.choice(problems)
-        # Fetch problem description
-        query = {
-            "operationName": "questionData",
-            "variables": {
-                "titleSlug": problem.titleSlug
-            },
-            "query": """query questionData($titleSlug: String!) {
-                question(titleSlug: $titleSlug) {
-                    content
-                }
-            }"""
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post('https://leetcode.com/graphql', json=query) as resp:
-                data = await resp.json()
-        html_description = data['data']['question']['content']
-        soup = BeautifulSoup(html_description, 'html.parser')
-        problem.description = soup.get_text()
-
-        if problem.description is None:
-            problem.description = "No description available"
+    @app_commands.command(name="random", description="Get 5 random LeetCode problems")
+    @app_commands.describe(difficulty="Problem difficulty (easy, medium, hard)")
+    async def random(self, interaction: discord.Interaction, difficulty: str = None):
+        await interaction.response.defer()
         
-        # Create embed
-        embed = Embed(title=f"{problem.title} - {problem.difficulty.capitalize()}", url=problemUrlBase + problem.titleSlug, description=problem.description[:2048])
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get('https://leetcode.com/api/problems/all/') as resp:
+                    data = await resp.json()
 
-        # Split description into chunks of 1024 characters and add each chunk as a field in the embed
-        chunks = [problem.description[i:i+1024] for i in range(2000, len(problem.description), 1024)]
-        for i, chunk in enumerate(chunks):
-            embed.add_field(name=f"Description (cont'd {i+1})", value=chunk, inline=False)
+            if difficulty:
+                difficulty = difficulty.lower()
+                if difficulty not in ['easy', 'medium', 'hard']:
+                    await interaction.followup.send("Invalid difficulty. Please choose 'easy', 'medium', or 'hard'.")
+                    return
 
-        # Send embed
-        await ctx.send(embed=embed)
+            problems = [Problem(p) for p in data['stat_status_pairs'] if not p['paid_only']]
+            
+            if difficulty:
+                problems = [p for p in problems if p.difficulty == difficulty]
+
+            if not problems:
+                await interaction.followup.send("No problems found with the given criteria.")
+                return
+
+            selected_problems = random.sample(problems, min(5, len(problems)))
+            
+            embed = discord.Embed(
+                title="🎲 Random LeetCode Problems",
+                description=f"Here are {'5' if len(selected_problems) == 5 else len(selected_problems)} random "
+                           f"{difficulty + ' ' if difficulty else ''}problems:",
+                color=discord.Color.blue()
+            )
+
+            difficulty_emojis = {
+                'easy': '🟢',
+                'medium': '🟡',
+                'hard': '🔴'
+            }
+
+            for problem in selected_problems:
+                problem_url = f'https://leetcode.com/problems/{problem.titleSlug}/'
+                difficulty_emoji = difficulty_emojis.get(problem.difficulty, '❓')
+                embed.add_field(
+                    name=f"{difficulty_emoji} {problem.title}",
+                    value=f"[Solve Problem]({problem_url})",
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed)
+            
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {str(e)}")
 
 async def setup(bot):
     await bot.add_cog(Leetcodeq(bot))
