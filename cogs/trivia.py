@@ -170,6 +170,6 @@ class Trivia(commands.Cog):
     async def trivia(self, interaction: discord.Interaction, category: str = None):
         await interaction.response.defer()
         await self.handle_trivia(interaction, category)
-
+# 
 async def setup(bot):
     await bot.add_cog(Trivia(bot)) 
