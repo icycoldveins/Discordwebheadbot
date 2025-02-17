@@ -1,31 +1,19 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import random
 
 class Conch(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
-    async def conch(self, ctx, question: str):
-        """
-        Ask the Magic Conch a question.
-
-        This command simulates asking the Magic Conch a question and receiving a random answer.
-
-        Usage:
-        !conch <question>
-
-        Arguments:
-        - question (str): The question you want to ask the Magic Conch.
-
-        Example:
-        !conch Will it rain tomorrow?
-        """
-        # Rest of your command logic here...
+    @app_commands.command(name="conch", description="Ask the Magic Conch a question")
+    @app_commands.describe(question="The question you want to ask the Magic Conch")
+    async def conch_slash(self, interaction: discord.Interaction, question: str):
+        await interaction.response.defer()
 
         answers = [
-           "It is certain.",
+            "It is certain.",
             "It is decidedly so.",
             "Without a doubt.",
             "Yes, definitely.",
@@ -45,10 +33,27 @@ class Conch(commands.Cog):
             "My sources say no.",
             "Outlook not so good.",
             "Very doubtful.",
-            "No",
+            "No"
         ]
+
         answer = random.choice(answers)
-        await ctx.send(f"The Magic Conch says: {answer}")
+        
+        embed = discord.Embed(
+            title="🐚 The Magic Conch Shell",
+            color=discord.Color.purple()
+        )
+        embed.add_field(
+            name="❓ Question",
+            value=question,
+            inline=False
+        )
+        embed.add_field(
+            name="💭 Answer",
+            value=answer,
+            inline=False
+        )
+
+        await interaction.followup.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Conch(bot))
