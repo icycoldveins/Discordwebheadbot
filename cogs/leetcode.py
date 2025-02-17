@@ -104,4 +104,9 @@ class Leetcode(commands.Cog):
                     await interaction.followup.send("Error fetching user data")
 
 async def setup(bot):
-    await bot.add_cog(Leetcode(bot))
+    leetcode_cog = Leetcode(bot)
+    await bot.add_cog(leetcode_cog)
+    try:
+        await bot.tree.sync()
+    except Exception as e:
+        print(f"Failed to sync Leetcode commands: {e}")

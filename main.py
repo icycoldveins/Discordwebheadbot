@@ -45,8 +45,7 @@ async def load_extensions():
         "cogs.spotify",
         "cogs.leetcode",
         "cogs.participation",
-        "cogs.leetcoderandom",
-        "cogs.calories"
+        "cogs.leetcoderandom"
     ]
     for extension in extensions:
         try:
@@ -60,6 +59,7 @@ async def on_ready():
     print(f"Logged in as {bot.user.name} - {bot.user.id}")
     await load_extensions()
     try:
+        print("Syncing commands...")
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s)")
     except Exception as e:
