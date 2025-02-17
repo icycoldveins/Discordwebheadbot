@@ -17,7 +17,10 @@ if not BOT_TOKEN:
 
 # Define intents
 intents = discord.Intents.default()
-intents.message_content = True
+intents.members = True  # For member-related data
+intents.presences = True  # For status and activity data
+intents.message_content = True  # For message content
+intents.guilds = True  # For server data
 
 # Create a bot instance
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -45,7 +48,9 @@ async def load_extensions():
         "cogs.leetcodeproblem",
         "cogs.nba_schedule",
         "cogs.nfl_schedule",
-        "cogs.conch"  # Keeping the Magic Conch Shell
+        "cogs.conch",
+        "cogs.urban",
+        "cogs.discordstats"  # Add the Discord Stats cog
     ]
     for extension in extensions:
         try:
