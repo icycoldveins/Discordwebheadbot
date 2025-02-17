@@ -24,7 +24,7 @@ class LeetcodeProblem(commands.Cog):
                 title
                 titleSlug
                 difficulty
-                content
+                contentk
                 topicTags {
                     name
                 }

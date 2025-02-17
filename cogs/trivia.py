@@ -6,6 +6,27 @@ import html
 import asyncio
 import random
 
+class TriviaView(discord.ui.View):
+    def __init__(self, cog, interaction, category):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.original_interaction = interaction
+        self.category = category
+        self.active = True
+        self.current_timeout_task = None
+
+    @discord.ui.button(label="End Game", style=discord.ButtonStyle.red)
+    async def end_game(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user == self.original_interaction.user:
+            self.active = False
+            # Cancel current timeout task if it exists
+            if self.current_timeout_task and not self.current_timeout_task.done():
+                self.current_timeout_task.cancel()
+            await interaction.response.send_message("Trivia game ended! Thanks for playing! 🎮")
+            self.stop()
+        else:
+            await interaction.response.send_message("Only the person who started the trivia can end the game!", ephemeral=True)
+
 class Trivia(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -47,10 +68,19 @@ class Trivia(commands.Cog):
                 data = await response.json()
                 return data['results'][0] if data['results'] else None
 
-    async def handle_trivia(self, interaction: discord.Interaction, category: str = None):
+    async def handle_trivia(self, interaction: discord.Interaction, category: str = None, view: TriviaView = None):
+        if not view:
+            view = TriviaView(self, interaction, category)
+
+        if not view.active:
+            return
+
         question_data = await self.get_trivia_question(category)
         if not question_data:
-            await interaction.followup.send("Failed to fetch trivia question. Please try again.")
+            if interaction.response.is_done():
+                await interaction.followup.send("Failed to fetch trivia question. Please try again.")
+            else:
+                await interaction.response.send_message("Failed to fetch trivia question. Please try again.")
             return
 
         # Decode HTML entities and prepare question
@@ -58,18 +88,15 @@ class Trivia(commands.Cog):
         correct_answer = html.unescape(question_data['correct_answer'])
         incorrect_answers = [html.unescape(ans) for ans in question_data['incorrect_answers']]
         
-        # Prepare answers
         all_answers = incorrect_answers + [correct_answer]
         random.shuffle(all_answers)
         
-        # Create embed
         embed = discord.Embed(
             title="🎯 Trivia Time!",
             description=f"**Category:** {question_data['category']}\n**Difficulty:** {question_data['difficulty'].capitalize()}\n\n**Question:**\n{question}",
             color=discord.Color.blue()
         )
 
-        # Add answers as fields
         for idx, answer in enumerate(all_answers, 1):
             embed.add_field(
                 name=f"Option {idx}",
@@ -77,29 +104,15 @@ class Trivia(commands.Cog):
                 inline=False
             )
 
-        # Add footer with time limit
         embed.set_footer(text="You have 30 seconds to answer! React with the number corresponding to your answer.")
 
-        # Create Next Question button
-        next_button = discord.ui.Button(label="Next Question", style=discord.ButtonStyle.green, custom_id="next_question")
-        
-        # Create View with button
-        view = discord.ui.View(timeout=None)
-        
-        async def next_question_callback(button_interaction: discord.Interaction):
-            if button_interaction.user == interaction.user:
-                await button_interaction.response.defer()
-                await self.handle_trivia(button_interaction, category)
-            else:
-                await button_interaction.response.send_message("Only the person who started the trivia can request the next question!", ephemeral=True)
+        # Handle different interaction states
+        if interaction.response.is_done():
+            message = await interaction.followup.send(embed=embed, view=view)
+        else:
+            await interaction.response.send_message(embed=embed, view=view)
+            message = await interaction.original_response()
 
-        next_button.callback = next_question_callback
-        view.add_item(next_button)
-
-        # Send question
-        message = await interaction.followup.send(embed=embed, view=view)
-
-        # Add reaction options
         reactions = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
         for reaction in reactions:
             await message.add_reaction(reaction)
@@ -108,13 +121,18 @@ class Trivia(commands.Cog):
             return user != self.bot.user and str(reaction.emoji) in reactions and reaction.message.id == message.id
 
         try:
-            reaction, user = await self.bot.wait_for('reaction_add', timeout=30.0, check=check)
+            # Create a timeout task that can be cancelled
+            view.current_timeout_task = asyncio.create_task(
+                self.bot.wait_for('reaction_add', timeout=30.0, check=check)
+            )
+            reaction, user = await view.current_timeout_task
             
-            # Get user's answer
+            if not view.active:  # Check if game was ended while waiting
+                return
+                
             selected_idx = reactions.index(str(reaction.emoji))
             selected_answer = all_answers[selected_idx]
             
-            # Create result embed
             result_embed = discord.Embed(
                 title="🎯 Trivia Result",
                 color=discord.Color.green() if selected_answer == correct_answer else discord.Color.red()
@@ -126,14 +144,25 @@ class Trivia(commands.Cog):
                 result_embed.description = f"❌ Sorry {user.mention}, that's incorrect. The correct answer was **{correct_answer}**"
             
             await interaction.followup.send(embed=result_embed)
+            
+            # Automatically ask next question if game is still active
+            if view.active:
+                await asyncio.sleep(3)  # Brief pause between questions
+                await self.handle_trivia(interaction, category, view)
 
         except asyncio.TimeoutError:
-            timeout_embed = discord.Embed(
-                title="⏰ Time's Up!",
-                description=f"The correct answer was **{correct_answer}**",
-                color=discord.Color.orange()
-            )
-            await interaction.followup.send(embed=timeout_embed)
+            if view.active:  # Only show timeout message if game wasn't ended
+                timeout_embed = discord.Embed(
+                    title="⏰ Time's Up!",
+                    description=f"The correct answer was **{correct_answer}**\nGame ended due to timeout!",
+                    color=discord.Color.orange()
+                )
+                await interaction.followup.send(embed=timeout_embed)
+                view.active = False
+                view.stop()
+        except asyncio.CancelledError:
+            # Question was cancelled (game ended), do nothing
+            pass
 
     @app_commands.command(name="trivia", description="Start a trivia game!")
     @app_commands.describe(category="Select a category (optional)")

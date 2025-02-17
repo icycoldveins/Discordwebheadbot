@@ -39,15 +39,13 @@ async def run_web_server():
 
 async def load_extensions():
     extensions = [
-        "cogs.conch",
-        "cogs.roll",
         "cogs.trivia",
-        "cogs.spotify",
         "cogs.leetcode",
-        "cogs.participation",
         "cogs.leetcoderandom",
+        "cogs.leetcodeproblem",
         "cogs.nba_schedule",
-        "cogs.nfl_schedule"
+        "cogs.nfl_schedule",
+        "cogs.conch"  # Keeping the Magic Conch Shell
     ]
     for extension in extensions:
         try:
