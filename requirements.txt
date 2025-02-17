@@ -7,3 +7,4 @@ beautifulsoup4==4.9.3
 aiohttp
 asyncio
 pytz
+matplotlib
