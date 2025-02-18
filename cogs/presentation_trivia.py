@@ -18,56 +18,41 @@ class PresentationTriviaView(discord.ui.View):
     def __init__(self, cog, interaction):
         super().__init__(timeout=None)
         self.cog = cog
-        self.original_interaction = interaction
+        self.interaction = interaction
         self.active = True
-        self.waiting_for_answer = False
-        self.current_question = 0  # Track current question index
+        self.answer_event = asyncio.Event()
+        self.last_reaction = None
+        self.last_user = None
 
-    @discord.ui.button(label="Skip Question", style=discord.ButtonStyle.gray)
-    async def skip_question(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Handle skipping to the next question"""
-        if interaction.user == self.original_interaction.user:
-            self.waiting_for_answer = False  # Stop waiting for current answer
-            self.current_question += 1  # Move to next question
-            await interaction.response.send_message("Skipping to next question...", ephemeral=True)
-            # Signal the main loop to continue
-            self.stop()
-        else:
-            await interaction.response.send_message("Only the person who started the trivia can skip questions!", ephemeral=True)
-
-    @discord.ui.button(label="End Trivia", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="End Trivia", style=discord.ButtonStyle.danger)
     async def end_trivia(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user == self.original_interaction.user:
+        if interaction.user.id == self.interaction.user.id:
             self.active = False
-            self.waiting_for_answer = False
-            button.disabled = True
+            self.answer_event.set()
+            for item in self.children:
+                item.disabled = True
             await interaction.message.edit(view=self)
-            await interaction.response.send_message("Trivia game ended! Thanks for playing! 📚")
-            self.stop()
+            await interaction.response.send_message("Trivia ended by user.")
         else:
-            await interaction.response.send_message("Only the person who started the trivia can end it!", ephemeral=True)
+            await interaction.response.send_message("Only the person who started the trivia can end it.", ephemeral=True)
 
-    async def wait_for_answer(self, bot, message, reactions):
-        """Handle waiting for answer with cancellation support"""
-        self.waiting_for_answer = True
+    async def wait_for_answer(self, bot, message, valid_reactions):
         try:
             def check(reaction, user):
-                return (user == self.original_interaction.user and 
-                        str(reaction.emoji) in reactions and 
-                        reaction.message.id == message.id)
+                return (
+                    user.id == self.interaction.user.id 
+                    and str(reaction.emoji) in valid_reactions 
+                    and reaction.message.id == message.id
+                )
 
-            while self.waiting_for_answer and self.active:
-                try:
-                    reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
-                    self.waiting_for_answer = False
-                    return reaction, user
-                except asyncio.TimeoutError:
-                    self.waiting_for_answer = False
-                    return None, None
-                
-        except Exception as e:
-            print(f"Error in wait_for_answer: {e}")
-            self.waiting_for_answer = False
+            reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
+            self.last_reaction = reaction
+            self.last_user = user
+            self.answer_event.set()
+            return reaction, user
+
+        except asyncio.TimeoutError:
+            self.answer_event.set()
             return None, None
 
 class ContentUploadView(discord.ui.View):
@@ -242,213 +227,116 @@ class PresentationTrivia(commands.Cog):
         self.model = genai.GenerativeModel('gemini-pro')
         # Add content cache dictionary
         self.user_content = {}
+        self.chunk_size = 4000  # Size of content chunk to process at a time
 
-    async def generate_questions(self, content: str) -> list:
-        """Generate questions using Gemini AI"""
+    async def generate_questions(self, content: str, start_pos: int = 0) -> list:
+        """Generate questions using Gemini AI from a specific position in the content"""
         try:
             if not content or len(content.strip()) < 50:
                 print("Content too short or empty")
                 return []
 
-            print(f"Processing content length: {len(content)} characters")
+            # Take a chunk of content starting from start_pos
+            content_chunk = content[start_pos:start_pos + self.chunk_size]
+            print(f"Processing content chunk from position {start_pos}, length: {len(content_chunk)} characters")
             
-            prompt = f"""You are a quiz generator. Generate up to 10 multiple-choice questions about the key concepts from this content.
+            prompt = f"""You are a quiz generator. Generate multiple-choice questions about the key concepts from this content chunk.
 
-REQUIRED FORMAT:
+REQUIRED FORMAT (with proper spacing):
 {{
     "questions": [
         {{
-            "question": "What is the main concept described in...?",
-            "correct_answer": "The correct answer",
+            "question": "What is the main concept described in this passage?",
+            "correct_answer": "This is the correct answer with proper spacing",
             "incorrect_answers": [
-                "First wrong answer",
-                "Second wrong answer",
-                "Third wrong answer"
+                "First wrong answer with proper spacing",
+                "Second wrong answer with proper spacing",
+                "Third wrong answer with proper spacing"
             ],
-            "explanation": "Explanation based on the content"
+            "explanation": "This is the explanation with proper spacing"
         }}
     ]
 }}
 
 CRITICAL RULES:
-1. Generate as many questions as the content allows (up to 10)
+1. Generate as many questions as the content allows (no limit)
 2. Only create questions when there's enough content to support them
 3. Focus on key concepts and important information
-4. NO questions about:
-   - Course metadata (instructors, chapters, etc.)
-   - Formatting or presentation
+4. NO questions about metadata (instructors, chapters, etc.)
 5. Each question must have clear, distinct answers
 6. All answers must come from the content
-7. Quality over quantity - fewer good questions are better than many poor ones
+7. Quality over quantity
+8. IMPORTANT: Maintain proper spacing between words
+9. Use complete sentences
+10. Add punctuation with spaces
 
-Content to use:
-{content[:4000]}"""
-            
+Content chunk to use:
+{content_chunk}"""
+
             print("Sending request to Gemini...")
             response = await asyncio.to_thread(
                 self.model.generate_content, prompt
             )
             
-            def clean_json_text(text):
-                text = re.sub(r'([.!?])([A-Z])', r'\1 \2', text)
+            def clean_text(text):
+                # Add space after punctuation
+                text = re.sub(r'([.!?,])([A-Za-z])', r'\1 \2', text)
+                # Add space between words if missing
                 text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+                # Fix multiple spaces
                 text = re.sub(r'\s+', ' ', text)
+                # Ensure proper spacing around quotes
+                text = re.sub(r'"(\w)', r'" \1', text)
+                text = re.sub(r'(\w)"', r'\1 "', text)
                 return text.strip()
 
             try:
                 json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
                 if not json_match:
-                    print("No JSON structure found")
                     return []
                 
-                json_str = json_match.group()
-                parsed = json.loads(json_str)
-                
+                parsed = json.loads(json_match.group())
                 if 'questions' not in parsed:
-                    print("Invalid JSON structure - missing questions array")
                     return []
                 
-                valid_questions = []
-                seen_questions = set()
                 metadata_keywords = ['instructor', 'professor', 'teacher', 'chapter', 
                                    'section', 'page', 'course', 'code', 'syllabus']
                 
+                valid_questions = []
                 for q in parsed['questions']:
-                    try:
-                        # Skip metadata questions
-                        if any(keyword in q['question'].lower() for keyword in metadata_keywords):
-                            continue
-                            
-                        if (isinstance(q, dict) and
-                            all(key in q for key in ['question', 'correct_answer', 'incorrect_answers', 'explanation']) and
-                            isinstance(q['incorrect_answers'], list) and 
-                            len(q['incorrect_answers']) == 3):
-                            
-                            cleaned_q = {
-                                'question': clean_json_text(q['question']),
-                                'correct_answer': clean_json_text(q['correct_answer']),
-                                'incorrect_answers': [clean_json_text(ans) for ans in q['incorrect_answers']],
-                                'explanation': clean_json_text(q['explanation'])
-                            }
-                            
-                            # Validate answer quality
-                            answers = [cleaned_q['correct_answer']] + cleaned_q['incorrect_answers']
-                            if (len(set(answers)) == 4 and  # All answers must be unique
-                                all(len(ans.strip()) > 0 for ans in answers)):  # No empty answers
-                                if cleaned_q['question'] not in seen_questions:
-                                    seen_questions.add(cleaned_q['question'])
-                                    valid_questions.append(cleaned_q)
-                    except Exception as e:
-                        print(f"Question validation error: {str(e)}")
+                    if any(keyword in q['question'].lower() for keyword in metadata_keywords):
                         continue
+                        
+                    if (isinstance(q, dict) and
+                        all(key in q for key in ['question', 'correct_answer', 'incorrect_answers', 'explanation']) and
+                        isinstance(q['incorrect_answers'], list) and 
+                        len(q['incorrect_answers']) == 3):
+                        
+                        # Clean and format all text fields
+                        cleaned_q = {
+                            'question': clean_text(q['question']),
+                            'correct_answer': clean_text(q['correct_answer']),
+                            'incorrect_answers': [clean_text(ans) for ans in q['incorrect_answers']],
+                            'explanation': clean_text(q['explanation'])
+                        }
+                        
+                        # Validate answer uniqueness and quality
+                        answers = [cleaned_q['correct_answer']] + cleaned_q['incorrect_answers']
+                        if (len(set(answers)) == 4 and  # All answers must be unique
+                            all(len(ans.strip()) > 0 for ans in answers)):  # No empty answers
+                            valid_questions.append(cleaned_q)
                 
-                num_questions = len(valid_questions)
-                print(f"Successfully generated {num_questions} valid questions")
+                if valid_questions:
+                    random.shuffle(valid_questions)
+                    return valid_questions
                 
-                if num_questions == 0:
-                    print("No valid questions generated")
-                    return []
-                elif num_questions < 5:
-                    print(f"Warning: Only generated {num_questions} questions")
-                
-                random.shuffle(valid_questions)
-                return valid_questions  # Return all valid questions (up to 10)
-                
-            except json.JSONDecodeError as e:
-                print(f"JSON parsing error: {str(e)}")
+            except Exception as e:
+                print(f"Error processing questions: {str(e)}")
                 return []
-            
+                
         except Exception as e:
             print(f"Question generation error: {str(e)}")
             return []
-
-    def split_content(self, content: str) -> list:
-        """Split content into manageable sections"""
-        # Split on paragraphs or major punctuation
-        sections = re.split(r'\n\n+|\. (?=[A-Z])', content)
-        
-        # Combine very short sections
-        merged_sections = []
-        current_section = ""
-        
-        for section in sections:
-            if not section.strip():
-                continue
-            
-            if len(current_section) + len(section) < 1000:
-                current_section += " " + section
-            else:
-                if current_section:
-                    merged_sections.append(current_section.strip())
-                current_section = section
-        
-        if current_section:
-            merged_sections.append(current_section.strip())
-        
-        return merged_sections
-
-    def process_response(self, response_text: str) -> list:
-        """Process and validate response from Gemini"""
-        try:
-            # Extract and clean JSON
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if not json_match:
-                return []
-            
-            json_str = json_match.group()
-            parsed = json.loads(json_str)
-            
-            if 'questions' not in parsed:
-                return []
-            
-            # Clean and validate questions
-            valid_questions = []
-            for q in parsed['questions']:
-                try:
-                    if self.is_valid_question(q):
-                        cleaned_q = self.clean_question(q)
-                        valid_questions.append(cleaned_q)
-                except:
-                    continue
-            
-            return valid_questions
-            
-        except:
-            return []
-
-    def is_valid_question(self, question: dict) -> bool:
-        """Validate question structure and content"""
-        return (isinstance(question, dict) and
-                all(key in question for key in ['question', 'correct_answer', 'incorrect_answers', 'explanation']) and
-                isinstance(question['incorrect_answers'], list) and 
-                len(question['incorrect_answers']) == 3)
-
-    def clean_question(self, question: dict) -> dict:
-        """Clean and format question text"""
-        def clean_text(text):
-            text = re.sub(r'([.!?])([A-Z])', r'\1 \2', text)
-            text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-            text = re.sub(r'\s+', ' ', text)
-            return text.strip()
-        
-        return {
-            'question': clean_text(question['question']),
-            'correct_answer': clean_text(question['correct_answer']),
-            'incorrect_answers': [clean_text(ans) for ans in question['incorrect_answers']],
-            'explanation': clean_text(question['explanation'])
-        }
-
-    def validate_questions(self, questions: list) -> list:
-        """Final validation of questions"""
-        seen_questions = set()
-        valid_questions = []
-        
-        for q in questions:
-            if q['question'] not in seen_questions:
-                seen_questions.add(q['question'])
-                valid_questions.append(q)
-        
-        return valid_questions
 
     def clean_content(self, content: str) -> str:
         """Clean and prepare content for question generation"""
@@ -591,35 +479,58 @@ Content to use:
     async def start_quiz(self, interaction: discord.Interaction, content: str):
         """Start the quiz with the provided content"""
         try:
-            # Cache the content for this user
             self.user_content[interaction.user.id] = content
-            
-            # Generate questions
-            questions = await self.generate_questions(content)
-            if not questions:
-                await interaction.followup.send("Unable to generate questions from the provided content. Please try with different content.")
-                return
-
-            # Start trivia game
             view = PresentationTriviaView(self, interaction)
             score = 0
-            total_questions = len(questions)
+            current_question = 0
+            content_position = 0
+            questions = []
 
-            for i, question in enumerate(questions, 1):
-                if not view.active:
-                    break
+            # Initial progress message
+            progress = discord.Embed(
+                title="📚 Presentation Trivia",
+                description=f"Current Score: {score}/{current_question}\nGenerating questions...",
+                color=discord.Color.blue()
+            )
+            await interaction.followup.send(embed=progress)
 
-                # Show progress
-                progress = discord.Embed(
-                    title="📚 Presentation Trivia",
-                    description=f"Question {i} of {total_questions}\nCurrent Score: {score}/{i-1}",
-                    color=discord.Color.blue()
-                )
-                await interaction.followup.send(embed=progress)
+            while view.active:
+                if not questions:
+                    # Check if trivia was ended before generating new questions
+                    if not view.active:
+                        break
 
+                    # Randomly select a starting position in the content for variety
+                    if len(content) > self.chunk_size:
+                        max_start = len(content) - self.chunk_size
+                        content_position = random.randint(0, max_start)
+                    else:
+                        content_position = 0
+                        
+                    questions = await self.generate_questions(content, content_position)
+                    
+                    if not questions:
+                        # If we couldn't generate questions from this chunk, try from the beginning
+                        if content_position != 0:
+                            content_position = 0
+                            questions = await self.generate_questions(content, 0)
+                        
+                        # If still no questions, end the quiz
+                        if not questions:
+                            final_embed = discord.Embed(
+                                title="🎯 Quiz Complete!",
+                                description=f"No more questions available.\nFinal Score: {score}/{current_question}",
+                                color=discord.Color.gold()
+                            )
+                            await interaction.followup.send(embed=final_embed)
+                            break
+
+                # Get current question
+                question = questions.pop(0)  # Take the next question
+                
                 # Format question
                 question_embed = discord.Embed(
-                    title="Question",
+                    title=f"Question {current_question + 1}",
                     description=question['question'],
                     color=discord.Color.blue()
                 )
@@ -641,21 +552,31 @@ Content to use:
                 for reaction in reactions:
                     await msg.add_reaction(reaction)
 
-                # Wait for answer
+                # Check if trivia was ended before waiting for answer
+                if not view.active:
+                    break
+
                 reaction, user = await view.wait_for_answer(self.bot, msg, reactions)
                 
                 if not view.active:  # If trivia was ended
-                    break
+                    final_embed = discord.Embed(
+                        title="🎯 Trivia Ended!",
+                        description=f"Final Score: {score}/{current_question}\nThanks for playing!",
+                        color=discord.Color.gold()
+                    )
+                    await interaction.followup.send(embed=final_embed)
+                    return  # Exit immediately
                     
                 if not reaction:  # If we timed out
                     timeout_embed = discord.Embed(
                         title="⏰ Time's Up!",
-                        description=f"The correct answer was: **{question['correct_answer']}**",
+                        description=f"The correct answer was: **{question['correct_answer']}**\nFinal Score: {score}/{current_question}",
                         color=discord.Color.red()
                     )
                     await interaction.followup.send(embed=timeout_embed)
                     break
 
+                # Process answer
                 selected_idx = reactions.index(str(reaction.emoji))
                 selected_answer = all_answers[selected_idx]
                 is_correct = selected_answer == question['correct_answer']
@@ -663,31 +584,40 @@ Content to use:
                 if is_correct:
                     score += 1
 
+                # Show answer result
                 result_embed = discord.Embed(
-                    title="Answer Result",
+                    title="✨ Answer Result",
                     description=(
-                        f"You selected: {selected_answer}\n\n"
                         f"{'✅ Correct!' if is_correct else '❌ Incorrect!'}\n"
-                        f"The correct answer was: **{question['correct_answer']}**\n\n"
-                        f"Explanation:\n{question.get('explanation', 'No explanation provided.')}"
+                        f"You selected: {selected_answer}\n"
+                        f"Correct answer: **{question['correct_answer']}**\n\n"
+                        f"Explanation: {question.get('explanation', 'No explanation provided.')}\n\n"
+                        f"Current Score: {score}/{current_question + 1}"
                     ),
                     color=discord.Color.green() if is_correct else discord.Color.red()
                 )
                 await interaction.followup.send(embed=result_embed)
+                
+                # Move to next question
+                current_question += 1
+                
+                # Add a small delay between questions
+                if view.active:
+                    await asyncio.sleep(2)
 
-                if i < total_questions:
-                    await asyncio.sleep(3)
-
-            if view.active:  # Only show final score if trivia wasn't ended early
+            # Show final score if we completed all questions
+            if view.active and current_question == len(questions):
                 final_embed = discord.Embed(
-                    title="🎯 Trivia Complete!",
-                    description=f"Final Score: {score}/{i}\nPercentage: {(score/i)*100:.1f}%",
+                    title="🎉 Quiz Complete!",
+                    description=f"Congratulations! You've completed all questions!\nFinal Score: {score}/{current_question}\nPercentage: {(score/current_question)*100:.1f}%",
                     color=discord.Color.gold()
                 )
                 await interaction.followup.send(embed=final_embed)
 
         except Exception as e:
-            await interaction.followup.send(f"An error occurred: {str(e)}")
+            if view.active:  # Only show error if trivia wasn't manually ended
+                traceback.print_exc()
+                await interaction.followup.send(f"An error occurred: {str(e)}")
 
 async def setup(bot):
     await bot.add_cog(PresentationTrivia(bot)) 
