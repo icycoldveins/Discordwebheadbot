@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 from datetime import datetime, timezone, timedelta
-import pytz
+from pytz import timezone
 
 class NFLSchedule(commands.Cog):
     def __init__(self, bot):
@@ -45,8 +45,8 @@ class NFLSchedule(commands.Cog):
         ][:25]
 
     def format_game_time(self, game_date):
-        et = pytz.timezone('US/Eastern')
-        pt = pytz.timezone('US/Pacific')
+        et = timezone('US/Eastern')
+        pt = timezone('US/Pacific')
         
         et_time = game_date.astimezone(et)
         pt_time = game_date.astimezone(pt)
@@ -60,22 +60,18 @@ class NFLSchedule(commands.Cog):
     def get_team_display(self, team_abbr):
         return f"{self.team_emojis.get(team_abbr, '🏈')} {team_abbr}"
 
-    @app_commands.command(name="nfl_schedule", description="Get NFL schedule (use team name for specific team schedule)")
-    @app_commands.describe(team="Optional: The NFL team name (e.g., chiefs, eagles, niners)")
-    @app_commands.autocomplete(team=team_autocomplete)
-    async def nfl_schedule(self, interaction: discord.Interaction, team: str = None):
+    @app_commands.command(name="nfl", description="Get NFL schedule for a specific date (MM/DD/YYYY)")
+    async def nfl(self, interaction: discord.Interaction, date: str = None):
+        if date is None:
+            # Use current date when no parameter is provided
+            current_date = datetime.now(timezone('US/Eastern'))
+            date = current_date.strftime("%m/%d/%Y")
+
         await interaction.response.defer()
 
-        if team:
-            return await self.get_team_schedule(interaction, team)
-        
         try:
-            current_date = datetime.now(timezone.utc)
-            week_end = current_date + timedelta(days=7)
-            date_range = f"{current_date.strftime('%Y%m%d')}-{week_end.strftime('%Y%m%d')}"
-            
             async with aiohttp.ClientSession(headers=self.headers) as session:
-                url = f"{self.base_url}/scoreboard?dates={date_range}"
+                url = f"{self.base_url}/scoreboard?dates={date}"
                 async with session.get(url) as resp:
                     if resp.status != 200:
                         await interaction.followup.send("Failed to fetch NFL schedule. Please try again later.")

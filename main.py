@@ -2,13 +2,10 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from aiohttp import web
-import asyncio
 
 # Load environment variables
 load_dotenv()
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
-PORT = int(os.getenv('PORT', 10000))
 
 # Check if the BOT_TOKEN is loaded correctly
 if not BOT_TOKEN:
@@ -25,21 +22,6 @@ intents.guilds = True  # For server data
 # Create a bot instance
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Create web app
-app = web.Application()
-
-async def handle(request):
-    return web.Response(text="Bot is running!")
-
-app.router.add_get("/", handle)
-
-async def run_web_server():
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', PORT)
-    await site.start()
-    print(f"Web server running on port {PORT}")
-
 async def load_extensions():
     extensions = [
         "cogs.trivia",
@@ -53,7 +35,7 @@ async def load_extensions():
         "cogs.discordstats",
         "cogs.analytics",
         "cogs.horoscope",
-        "cogs.market"  # Add the Market cog
+        "cogs.market"
     ]
     for extension in extensions:
         try:
@@ -64,33 +46,15 @@ async def load_extensions():
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} - {bot.user.id}")
+    print(f'Logged in as {bot.user.name}')
+    print('------')
     await load_extensions()
     try:
-        print("Syncing commands...")
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s)")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
-@bot.command()
-async def reload(ctx, extension_name: str):
-    try:
-        await bot.reload_extension(extension_name)
-        await ctx.send(f"Reloaded {extension_name}!")
-    except Exception as e:
-        await ctx.send(f"Error reloading {extension_name}: {e}")
-
-async def start_bot():
-    try:
-        await bot.start(BOT_TOKEN)
-    except KeyboardInterrupt:
-        await bot.close()
-
-# Run both the web server and the bot
-async def main():
-    await asyncio.gather(run_web_server(), start_bot())
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Run the bot
+bot.run(BOT_TOKEN)
 
