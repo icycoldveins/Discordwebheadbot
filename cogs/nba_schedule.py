@@ -234,7 +234,7 @@ class NBASchedule(commands.Cog):
                             value=game_info,
                             inline=False
                         )
-
+                    #  
                     await interaction.followup.send(embed=embed)
 
         except Exception as e:
