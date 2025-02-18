@@ -228,15 +228,37 @@ class PresentationTrivia(commands.Cog):
         # Add content cache dictionary
         self.user_content = {}
         self.chunk_size = 4000  # Size of content chunk to process at a time
+        # Add tracking for used chunks and questions
+        self.used_chunks = {}  # {user_id: set of chunk positions}
+        self.used_questions = {}  # {user_id: set of question hashes}
 
-    async def generate_questions(self, content: str, start_pos: int = 0) -> list:
+    async def generate_questions(self, content: str, start_pos: int = 0, user_id: int = None, interaction: discord.Interaction = None) -> list:
         """Generate questions using Gemini AI from a specific position in the content"""
         try:
             if not content or len(content.strip()) < 50:
                 print("Content too short or empty")
                 return []
 
-            # Take a chunk of content starting from start_pos
+            # Send processing message
+            processing_embed = discord.Embed(
+                title="🤖 Processing Content",
+                description=f"Processing chunk {start_pos//self.chunk_size + 1}...\nThis may take a moment.",
+                color=discord.Color.blue()
+            )
+            processing_msg = await interaction.followup.send(embed=processing_embed)
+
+            # Initialize tracking sets for this user if they don't exist
+            if user_id not in self.used_chunks:
+                self.used_chunks[user_id] = set()
+            if user_id not in self.used_questions:
+                self.used_questions[user_id] = set()
+
+            # Check if this chunk has been used
+            chunk_key = f"{start_pos}:{start_pos + self.chunk_size}"
+            if chunk_key in self.used_chunks[user_id]:
+                print(f"Chunk at position {start_pos} already used")
+                return []
+
             content_chunk = content[start_pos:start_pos + self.chunk_size]
             print(f"Processing content chunk from position {start_pos}, length: {len(content_chunk)} characters")
             
@@ -304,6 +326,13 @@ Content chunk to use:
                 
                 valid_questions = []
                 for q in parsed['questions']:
+                    # Create a unique hash for this question
+                    question_hash = hash(f"{q['question']}:{q['correct_answer']}")
+                    
+                    # Skip if we've used this question before
+                    if question_hash in self.used_questions[user_id]:
+                        continue
+
                     if any(keyword in q['question'].lower() for keyword in metadata_keywords):
                         continue
                         
@@ -324,9 +353,13 @@ Content chunk to use:
                         answers = [cleaned_q['correct_answer']] + cleaned_q['incorrect_answers']
                         if (len(set(answers)) == 4 and  # All answers must be unique
                             all(len(ans.strip()) > 0 for ans in answers)):  # No empty answers
+                            # Add question hash to used set
+                            self.used_questions[user_id].add(question_hash)
                             valid_questions.append(cleaned_q)
                 
                 if valid_questions:
+                    # Mark this chunk as used
+                    self.used_chunks[user_id].add(chunk_key)
                     random.shuffle(valid_questions)
                     return valid_questions
                 
@@ -358,42 +391,31 @@ Content chunk to use:
     async def process_file(self, file_data: bytes, filename: str) -> str:
         """Process different file types and extract text content"""
         try:
-            text_content = ""
-            
             if filename.endswith('.pptx'):
-                prs = Presentation(io.BytesIO(file_data))
-                for slide in prs.slides:
-                    # Process all shapes in the slide
+                presentation = Presentation(io.BytesIO(file_data))
+                text_content = []
+                
+                for slide in presentation.slides:
+                    # Extract text from shapes
                     for shape in slide.shapes:
-                        # Get text from text frames
-                        if hasattr(shape, "text_frame"):
-                            if shape.text_frame.text:
-                                text_content += shape.text_frame.text.strip() + "\n"
-                            # Get text from paragraphs in text frame
-                            for paragraph in shape.text_frame.paragraphs:
-                                for run in paragraph.runs:
-                                    if run.text:
-                                        text_content += run.text.strip() + "\n"
+                        if hasattr(shape, "text") and shape.text.strip():
+                            text_content.append(shape.text.strip())
                         
-                        # Get text from tables
-                        if hasattr(shape, "table"):
+                        # Handle tables specifically
+                        if shape.has_table:
                             for row in shape.table.rows:
                                 for cell in row.cells:
-                                    if cell.text:
-                                        text_content += cell.text.strip() + "\n"
+                                    if cell.text.strip():
+                                        text_content.append(cell.text.strip())
                         
-                        # Get text from grouped shapes
-                        if hasattr(shape, "shapes"):
-                            for subshape in shape.shapes:
-                                if hasattr(subshape, "text_frame"):
-                                    if subshape.text_frame.text:
-                                        text_content += subshape.text_frame.text.strip() + "\n"
-                                if hasattr(subshape, "table"):
-                                    for row in subshape.table.rows:
-                                        for cell in row.cells:
-                                            if cell.text:
-                                                text_content += cell.text.strip() + "\n"
-                    
+                        # Handle text frames
+                        if hasattr(shape, "text_frame"):
+                            for paragraph in shape.text_frame.paragraphs:
+                                if paragraph.text.strip():
+                                    text_content.append(paragraph.text.strip())
+
+                return "\n".join(text_content)
+            
             elif filename.endswith('.docx'):
                 doc = docx.Document(io.BytesIO(file_data))
                 for paragraph in doc.paragraphs:
@@ -421,6 +443,9 @@ Content chunk to use:
             
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")
+            await interaction.followup.send(
+                f"Error processing file: {str(e)}. Please try a different file or paste the content directly."
+            )
             return ""
 
     @app_commands.command(name="quiz", description="Start a quiz game from presentation content")
@@ -479,6 +504,10 @@ Content chunk to use:
     async def start_quiz(self, interaction: discord.Interaction, content: str):
         """Start the quiz with the provided content"""
         try:
+            # Clear previous tracking data for this user
+            self.used_chunks[interaction.user.id] = set()
+            self.used_questions[interaction.user.id] = set()
+            
             self.user_content[interaction.user.id] = content
             view = PresentationTriviaView(self, interaction)
             score = 0
@@ -507,13 +536,18 @@ Content chunk to use:
                     else:
                         content_position = 0
                         
-                    questions = await self.generate_questions(content, content_position)
+                    questions = await self.generate_questions(
+                        content, 
+                        content_position,
+                        interaction.user.id,
+                        interaction
+                    )
                     
                     if not questions:
                         # If we couldn't generate questions from this chunk, try from the beginning
                         if content_position != 0:
                             content_position = 0
-                            questions = await self.generate_questions(content, 0)
+                            questions = await self.generate_questions(content, 0, interaction.user.id, interaction)
                         
                         # If still no questions, end the quiz
                         if not questions:
