@@ -1,4 +1,4 @@
-discord.py
+discord.py>=2.0.0
 python-dotenv
 spotipy
 requests
@@ -8,3 +8,9 @@ aiohttp
 asyncio
 pytz
 matplotlib
+nltk
+spacy
+python-docx
+PyPDF2
+python-pptx
+google-generativeai==0.3.1
