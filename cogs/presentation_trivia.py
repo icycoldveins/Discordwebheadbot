@@ -389,7 +389,7 @@ Content chunk to use:
         return content
 
     async def process_file(self, file_data: bytes, filename: str) -> str:
-        """Process different file types and extract text content"""
+        """Process different file types and extract text contents"""
         try:
             if filename.endswith('.pptx'):
                 presentation = Presentation(io.BytesIO(file_data))
