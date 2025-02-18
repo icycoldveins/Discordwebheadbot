@@ -36,7 +36,8 @@ async def load_extensions():
         "cogs.analytics",
         "cogs.horoscope",
         "cogs.market",
-        "cogs.presentation_trivia"
+        "cogs.presentation_trivia",
+        "cogs.mc_quiz"
     ]
     for extension in extensions:
         try:
