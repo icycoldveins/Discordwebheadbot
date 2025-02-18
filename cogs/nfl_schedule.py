@@ -60,18 +60,23 @@ class NFLSchedule(commands.Cog):
     def get_team_display(self, team_abbr):
         return f"{self.team_emojis.get(team_abbr, '🏈')} {team_abbr}"
 
-    @app_commands.command(name="nfl", description="Get NFL schedule for a specific date (MM/DD/YYYY)")
-    async def nfl(self, interaction: discord.Interaction, date: str = None):
-        if date is None:
-            # Use current date when no parameter is provided
-            current_date = datetime.now(timezone('US/Eastern'))
-            date = current_date.strftime("%m/%d/%Y")
-
+    @app_commands.command(name="nfl_schedule", description="Get NFL schedule (use team name for specific team schedule)")
+    @app_commands.describe(team="Optional: The NFL team name (e.g., eagles, cowboys, chiefs)")
+    @app_commands.autocomplete(team=team_autocomplete)
+    async def nfl_schedule(self, interaction: discord.Interaction, team: str = None):
         await interaction.response.defer()
-
+        
+        if team:
+            return await self.get_team_schedule(interaction, team)
+        
         try:
+            # Use Eastern timezone for current date
+            current_date = datetime.now(timezone('US/Eastern'))
+            week_end = current_date + timedelta(days=7)
+            date_range = f"{current_date.strftime('%Y%m%d')}-{week_end.strftime('%Y%m%d')}"
+            
             async with aiohttp.ClientSession(headers=self.headers) as session:
-                url = f"{self.base_url}/scoreboard?dates={date}"
+                url = f"{self.base_url}/scoreboard?dates={date_range}"
                 async with session.get(url) as resp:
                     if resp.status != 200:
                         await interaction.followup.send("Failed to fetch NFL schedule. Please try again later.")
@@ -112,7 +117,6 @@ class NFLSchedule(commands.Cog):
                         date_str = game_date.strftime('%Y-%m-%d')
                         
                         if date_str != current_date:
-                            # Add previous date's games if exists
                             if games_text:
                                 embed.add_field(
                                     name=f"📅 {current_date_display}",
@@ -137,7 +141,7 @@ class NFLSchedule(commands.Cog):
 
                         game_text = (
                             f"{self.get_team_display(away_team)} @ {self.get_team_display(home_team)}\n"
-                            f"🕐 {game_date.strftime('%I:%M %p')} ET\n"
+                            f"{self.format_game_time(game_date)}\n"
                             f"📺 {broadcast_info}\n"
                             "───────────────\n"
                         )
@@ -151,12 +155,8 @@ class NFLSchedule(commands.Cog):
                             inline=False
                         )
 
-                    season_type = data.get("season", {}).get("type", {}).get("name", "")
-                    if season_type:
-                        footer_text = f"Season: {season_type}"
-                        if week_detail:
-                            footer_text = f"{week_detail} | {footer_text}"
-                        embed.set_footer(text=footer_text)
+                    if week_detail:
+                        embed.set_footer(text=week_detail)
 
                     await interaction.followup.send(embed=embed)
 
@@ -195,7 +195,7 @@ class NFLSchedule(commands.Cog):
                     for event in events:
                         try:
                             game_date = datetime.strptime(event["date"], "%Y-%m-%dT%H:%M%z")
-                            if game_date > datetime.now(timezone.utc):
+                            if game_date > datetime.now(timezone('US/Eastern')):
                                 upcoming_games.append((game_date, event))
                         except (ValueError, KeyError):
                             continue
