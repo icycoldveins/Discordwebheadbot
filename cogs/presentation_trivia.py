@@ -101,7 +101,7 @@ class ContentUploadView(discord.ui.View):
                 
                 processing_msg = await interaction.followup.send("Processing your file... ⏳")
                 file_data = await file.read()
-                content = await self.cog.process_file(file_data, file.filename)
+                content = await self.cog.process_file(file_data, file.filename, interaction)
                 
                 if not content or len(content.strip()) < 50:
                     await interaction.followup.send(
@@ -203,7 +203,7 @@ class ContentChoiceView(discord.ui.View):
                     return
                     
                 file_data = await file.read()
-                content = await self.cog.process_file(file_data, file.filename)
+                content = await self.cog.process_file(file_data, file.filename, interaction)
             else:
                 content = msg.content
 
@@ -389,9 +389,11 @@ Content chunk to use:
         
         return content
 
-    async def process_file(self, file_data: bytes, filename: str) -> str:
+    async def process_file(self, file_data: bytes, filename: str, interaction: discord.Interaction = None) -> str:
         """Process different file types and extract text contents"""
         try:
+            text_content = ""  # Initialize text_content variable
+            
             if filename.endswith('.pptx'):
                 presentation = Presentation(io.BytesIO(file_data))
                 text_content = []
@@ -444,14 +446,18 @@ Content chunk to use:
             
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")
-            await interaction.followup.send(
-                f"Error processing file: {str(e)}. Please try a different file or paste the content directly."
-            )
+            if interaction:  # Only send message if interaction is provided
+                await interaction.followup.send(
+                    f"Error processing file: {str(e)}. Please try a different file or paste the content directly."
+                )
             return ""
 
     @app_commands.command(name="quiz", description="Start a quiz game from presentation content")
     @app_commands.describe(new_content="Start with new content? Default: Use previous content if available")
     async def presentation_trivia(self, interaction: discord.Interaction, new_content: bool = False):
+        # Defer the response immediately to prevent timeout
+        await interaction.response.defer()
+
         if not new_content and interaction.user.id in self.user_content:
             embed = discord.Embed(
                 title="📚 Presentation Quiz",
@@ -459,11 +465,11 @@ Content chunk to use:
                 color=discord.Color.blue()
             )
             view = ContentChoiceView(self, interaction)
-            await interaction.response.send_message(embed=embed, view=view)
+            await interaction.followup.send(embed=embed, view=view)
             return
             
         # If no previous content or user wants new content
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Please paste your content or upload a file (txt, pdf, docx, pptx). You have 5 minutes."
         )
 
@@ -486,7 +492,7 @@ Content chunk to use:
                     return
                     
                 file_data = await file.read()
-                content = await self.process_file(file_data, file.filename)
+                content = await self.process_file(file_data, file.filename, interaction)
             else:
                 content = msg.content
 
