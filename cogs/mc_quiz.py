@@ -13,6 +13,7 @@ import traceback
 from .presentation_trivia import PresentationTriviaView
 import random
 import json
+import time
 
 class MCQuestionView(discord.ui.View):
     def __init__(self, quiz_session):
@@ -49,20 +50,69 @@ class MCQuestionView(discord.ui.View):
 
 class ContentChoiceView(discord.ui.View):
     def __init__(self, cog, interaction):
-        super().__init__()
+        super().__init__(timeout=300)
         self.cog = cog
         self.interaction = interaction
 
-    @discord.ui.button(label='Use Previous Content', style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Use Previous Content", style=discord.ButtonStyle.primary, emoji="🔄")
     async def use_previous(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        content = self.cog.user_content.get(interaction.user.id, "")
-        await self.cog.start_mc_quiz(interaction, content)
+        content = self.cog.user_content.get(interaction.user.id)
+        if content:
+            for item in self.children:
+                item.disabled = True
+            await interaction.message.edit(view=self)
+            
+            processing_msg = await interaction.followup.send("Generating quiz from previous content... 🎯")
+            await self.cog.start_mc_quiz(interaction, content)
+        else:
+            await interaction.followup.send("No previous content found. Please provide new content.")
 
-    @discord.ui.button(label='Provide New Content', style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="New Content", style=discord.ButtonStyle.primary, emoji="📝")
     async def new_content(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        await self.cog.mc_quiz(interaction, True)
+        for item in self.children:
+            item.disabled = True
+        await interaction.message.edit(view=self)
+        
+        await interaction.response.send_message(
+            "Please provide a topic (e.g., 'Python Programming Basics') or paste your content. "
+            "You can also upload a file (txt, pdf, docx, pptx). You have 5 minutes."
+        )
+
+        def check(m):
+            return (m.author == interaction.user and 
+                   m.channel == interaction.channel and 
+                   (m.content or m.attachments))
+
+        try:
+            msg = await self.cog.bot.wait_for('message', timeout=300.0, check=check)
+            
+            processing_msg = await interaction.followup.send("Processing your input... ⏳")
+            
+            if msg.attachments:
+                file = msg.attachments[0]
+                if not any(file.filename.endswith(ext) for ext in ['.txt', '.pdf', '.docx', '.pptx']):
+                    await interaction.followup.send(
+                        "Invalid file type. Please use .txt, .pdf, .docx, or .pptx files."
+                    )
+                    return
+                    
+                file_data = await file.read()
+                content = await self.cog.process_file(file_data, file.filename, interaction)
+            else:
+                content = msg.content
+
+            if not content or len(content.strip()) < 3:
+                await interaction.followup.send(
+                    "Please provide a valid topic or content."
+                )
+                return
+            
+            await processing_msg.edit(content="Input processed! Generating multiple choice quiz... 🎯")
+            await self.cog.start_mc_quiz(interaction, content)
+                
+        except asyncio.TimeoutError:
+            await interaction.followup.send("No input received within 5 minutes. Please try again.")
 
 class MCQuiz(commands.Cog):
     def __init__(self, bot):
@@ -72,7 +122,14 @@ class MCQuiz(commands.Cog):
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         self.model = genai.GenerativeModel('gemini-pro')
         self.user_content = {}
-        self.used_questions = {}  # Track used questions per user
+        self.used_questions = {}
+        self.active_quizzes = {}  # Track active quiz sessions
+        self.question_cache = {}  # Cache for generated questions
+        self.MAX_CACHE_SIZE = 1000  # Maximum questions to cache per topic
+        self.MAX_ACTIVE_QUIZZES = 5  # Maximum concurrent quizzes per channel
+        self.CLEANUP_DELAY = 3600  # Clear inactive sessions after 1 hour
+        # Start the cleanup task
+        self.cleanup_task = None
 
     @app_commands.command(name="mcquiz", description="Generate multiple-choice questions on a topic or from content")
     @app_commands.describe(new_content="Start with new content? Default: Use previous content if available")
@@ -401,6 +458,44 @@ Topic to use: {topic}"""
             if view.active:
                 traceback.print_exc()
                 await interaction.followup.send(f"An error occurred: {str(e)}")
+
+    async def cog_load(self):
+        """Called when the cog is loaded"""
+        self.cleanup_task = self.bot.loop.create_task(self._cleanup_inactive_sessions())
+
+    async def cog_unload(self):
+        """Called when the cog is unloaded"""
+        if self.cleanup_task:
+            self.cleanup_task.cancel()
+
+    async def _cleanup_inactive_sessions(self):
+        """Remove inactive quiz sessions and clear cache periodically"""
+        try:
+            while True:
+                current_time = time.time()
+                # Clear inactive sessions
+                inactive = [user_id for user_id, data in self.active_quizzes.items() 
+                          if current_time - data['last_activity'] > self.CLEANUP_DELAY]
+                
+                for user_id in inactive:
+                    if user_id in self.active_quizzes:
+                        del self.active_quizzes[user_id]
+                    if user_id in self.used_questions:
+                        del self.used_questions[user_id]
+                    if user_id in self.user_content:
+                        del self.user_content[user_id]
+                
+                # Clear old cache entries
+                for topic in list(self.question_cache.keys()):
+                    if len(self.question_cache[topic]) > self.MAX_CACHE_SIZE:
+                        self.question_cache[topic] = self.question_cache[topic][-self.MAX_CACHE_SIZE:]
+                
+                await asyncio.sleep(self.CLEANUP_DELAY)
+        except asyncio.CancelledError:
+            # Handle cleanup task cancellation
+            pass
+        except Exception as e:
+            print(f"Error in cleanup task: {e}")
 
 class MCQuizSession:
     def __init__(self, bot, interaction, questions):

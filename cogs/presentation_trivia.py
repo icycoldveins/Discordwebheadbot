@@ -536,12 +536,25 @@ Content chunk to use:
                     if not view.active:
                         break
 
-                    # Randomly select a starting position in the content for variety
+                    # Randomly select a position in the content
                     if len(content) > self.chunk_size:
                         max_start = len(content) - self.chunk_size
                         content_position = random.randint(0, max_start)
                     else:
                         content_position = 0
+                        
+                    # Align to chunk boundaries (4000 character chunks)
+                    content_position = (content_position // self.chunk_size) * self.chunk_size
+                    
+                    # Check if we've used all possible chunks
+                    if len(self.used_chunks[interaction.user.id]) * self.chunk_size >= len(content):
+                        final_embed = discord.Embed(
+                            title="🎯 Quiz Complete!",
+                            description=f"All content has been covered!\nFinal Score: {score}/{current_question}",
+                            color=discord.Color.gold()
+                        )
+                        await interaction.followup.send(embed=final_embed)
+                        break
                         
                     questions = await self.generate_questions(
                         content, 
@@ -551,20 +564,8 @@ Content chunk to use:
                     )
                     
                     if not questions:
-                        # If we couldn't generate questions from this chunk, try from the beginning
-                        if content_position != 0:
-                            content_position = 0
-                            questions = await self.generate_questions(content, 0, interaction.user.id, interaction)
-                        
-                        # If still no questions, end the quiz
-                        if not questions:
-                            final_embed = discord.Embed(
-                                title="🎯 Quiz Complete!",
-                                description=f"No more questions available.\nFinal Score: {score}/{current_question}",
-                                color=discord.Color.gold()
-                            )
-                            await interaction.followup.send(embed=final_embed)
-                            break
+                        # If we couldn't generate questions from this chunk, try another random position
+                        continue
 
                 # Get current question
                 question = questions.pop(0)  # Take the next question
