@@ -61,13 +61,16 @@ class NFLSchedule(commands.Cog):
         return f"{self.team_emojis.get(team_abbr, '🏈')} {team_abbr}"
 
     @app_commands.command(name="nfl_schedule", description="Get NFL schedule (use team name for specific team schedule)")
-    @app_commands.describe(team="Optional: The NFL team name (e.g., eagles, cowboys, chiefs)")
+    @app_commands.describe(
+        team="Optional: The NFL team name (e.g., eagles, cowboys, chiefs)",
+        recent_game="Show only the most recent game for the team"
+    )
     @app_commands.autocomplete(team=team_autocomplete)
-    async def nfl_schedule(self, interaction: discord.Interaction, team: str = None):
+    async def nfl_schedule(self, interaction: discord.Interaction, team: str = None, recent_game: bool = False):
         await interaction.response.defer()
         
         if team:
-            return await self.get_team_schedule(interaction, team)
+            return await self.get_team_schedule(interaction, team, recent_game)
         
         try:
             # Use Eastern timezone for current date
@@ -163,7 +166,7 @@ class NFLSchedule(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {str(e)}")
 
-    async def get_team_schedule(self, interaction: discord.Interaction, team: str):
+    async def get_team_schedule(self, interaction: discord.Interaction, team: str, recent_game: bool = False):
         team = team.lower()
         if team not in self.team_mapping:
             await interaction.followup.send("Invalid team name. Please use a valid NFL team name.")
@@ -185,11 +188,6 @@ class NFLSchedule(commands.Cog):
                         await interaction.followup.send("No upcoming games found for this team.")
                         return
 
-                    embed = discord.Embed(
-                        title=f"🏈 Schedule for {team.title()}",
-                        color=discord.Color.green()
-                    )
-
                     upcoming_games = []
 
                     for event in events:
@@ -201,17 +199,23 @@ class NFLSchedule(commands.Cog):
                             continue
 
                     upcoming_games.sort(key=lambda x: x[0])
-                    upcoming_games = upcoming_games[:10]
 
                     if not upcoming_games:
                         await interaction.followup.send("No upcoming games found for this team.")
                         return
 
-                    for game_date, event in upcoming_games:
-                        competition = event["competitions"][0]
+                    if recent_game:
+                        # Show only the next upcoming game
+                        next_game_date, next_game_event = upcoming_games[0]
+                        embed = discord.Embed(
+                            title=f"🏈 Next Game for {team.title()}",
+                            color=discord.Color.green()
+                        )
+
+                        competition = next_game_event["competitions"][0]
                         home_team = competition["competitors"][0]["team"]["abbreviation"]
                         away_team = competition["competitors"][1]["team"]["abbreviation"]
-                        week_detail = event.get("week", {}).get("text", "")
+                        week_detail = next_game_event.get("week", {}).get("text", "")
                         
                         broadcasts = competition.get("broadcasts", [])
                         broadcast_info = "TBD"
@@ -223,20 +227,58 @@ class NFLSchedule(commands.Cog):
                         
                         game_info = (
                             f"{self.get_team_display(away_team)} @ {self.get_team_display(home_team)}\n"
-                            f"{self.format_game_time(game_date)}\n"
+                            f"{self.format_game_time(next_game_date)}\n"
                             f"📺 {broadcast_info}\n"
                             f"🏟️ {venue}"
                         )
                         
                         embed.add_field(
-                            name=f"{week_detail}",
+                            name=week_detail,
                             value=game_info,
                             inline=False
                         )
 
-                    season_type = data.get("season", {}).get("type", {}).get("name", "")
-                    if season_type:
-                        embed.set_footer(text=f"Season: {season_type}")
+                        season_type = data.get("season", {}).get("type", {}).get("name", "")
+                        if season_type:
+                            embed.set_footer(text=f"Season: {season_type}")
+
+                    else:
+                        # Show full schedule (existing code)
+                        embed = discord.Embed(
+                            title=f"🏈 Schedule for {team.title()}",
+                            color=discord.Color.green()
+                        )
+
+                        for game_date, event in upcoming_games[:10]:
+                            competition = event["competitions"][0]
+                            home_team = competition["competitors"][0]["team"]["abbreviation"]
+                            away_team = competition["competitors"][1]["team"]["abbreviation"]
+                            week_detail = event.get("week", {}).get("text", "")
+                            
+                            broadcasts = competition.get("broadcasts", [])
+                            broadcast_info = "TBD"
+                            if broadcasts:
+                                broadcast_names = [b.get("names", [""])[0] for b in broadcasts]
+                                broadcast_info = ", ".join(filter(None, broadcast_names))
+
+                            venue = competition.get("venue", {}).get("fullName", "TBD")
+                            
+                            game_info = (
+                                f"{self.get_team_display(away_team)} @ {self.get_team_display(home_team)}\n"
+                                f"{self.format_game_time(game_date)}\n"
+                                f"📺 {broadcast_info}\n"
+                                f"🏟️ {venue}"
+                            )
+                            
+                            embed.add_field(
+                                name=week_detail,
+                                value=game_info,
+                                inline=False
+                            )
+
+                        season_type = data.get("season", {}).get("type", {}).get("name", "")
+                        if season_type:
+                            embed.set_footer(text=f"Season: {season_type}")
 
                     await interaction.followup.send(embed=embed)
 

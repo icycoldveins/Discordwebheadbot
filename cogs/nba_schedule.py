@@ -61,14 +61,17 @@ class NBASchedule(commands.Cog):
         return f"{self.team_emojis.get(team_abbr, '🏀')} {team_abbr}"
 
     @app_commands.command(name="nba_schedule", description="Get NBA schedule (use team name for specific team schedule)")
-    @app_commands.describe(team="Optional: The NBA team name (e.g., lakers, warriors, celtics)")
+    @app_commands.describe(
+        team="Optional: The NBA team name (e.g., lakers, warriors, celtics)",
+        recent_game="Show only the most recent game for the team"
+    )
     @app_commands.autocomplete(team=team_autocomplete)
-    async def nba_schedule(self, interaction: discord.Interaction, team: str = None):
+    async def nba_schedule(self, interaction: discord.Interaction, team: str = None, recent_game: bool = False):
         try:
             await interaction.response.defer()
             
             if team:
-                return await self.get_team_schedule(interaction, team)
+                return await self.get_team_schedule(interaction, team, recent_game)
             
             # Use Eastern timezone for current date
             current_date = datetime.now(pytz.timezone('US/Eastern'))
@@ -165,7 +168,7 @@ class NBASchedule(commands.Cog):
             except discord.errors.NotFound:
                 pass
 
-    async def get_team_schedule(self, interaction: discord.Interaction, team: str):
+    async def get_team_schedule(self, interaction: discord.Interaction, team: str, recent_game: bool = False):
         team = team.lower()
         if team not in self.team_mapping:
             await interaction.followup.send("Invalid team name. Please use a valid NBA team name.")
@@ -184,33 +187,39 @@ class NBASchedule(commands.Cog):
                     events = data.get("events", [])
 
                     if not events:
-                        await interaction.followup.send("No upcoming games found for this team.")
+                        await interaction.followup.send("No games found for this team.")
                         return
 
-                    embed = discord.Embed(
-                        title=f"🏀 Schedule for {team.title()}",
-                        color=discord.Color.blue()
-                    )
-
+                    current_time = datetime.now(timezone.utc)
                     upcoming_games = []
+                    past_games = []
 
                     for event in events:
                         try:
                             game_date = datetime.strptime(event["date"], "%Y-%m-%dT%H:%M%z")
-                            if game_date > datetime.now(timezone.utc):
+                            if game_date > current_time:
                                 upcoming_games.append((game_date, event))
+                            else:
+                                past_games.append((game_date, event))
                         except (ValueError, KeyError):
                             continue
 
                     upcoming_games.sort(key=lambda x: x[0])
-                    upcoming_games = upcoming_games[:10]
+                    past_games.sort(key=lambda x: x[0], reverse=True)
 
-                    if not upcoming_games:
-                        await interaction.followup.send("No upcoming games found for this team.")
-                        return
+                    if recent_game:
+                        if not upcoming_games:
+                            await interaction.followup.send("No upcoming games found for this team.")
+                            return
 
-                    for game_date, event in upcoming_games:
-                        competition = event["competitions"][0]
+                        # Show only the next upcoming game
+                        next_game_date, next_game_event = upcoming_games[0]
+                        embed = discord.Embed(
+                            title=f"🏀 Next Game for {team.title()}",
+                            color=discord.Color.blue()
+                        )
+
+                        competition = next_game_event["competitions"][0]
                         home_team = competition["competitors"][0]["team"]["abbreviation"]
                         away_team = competition["competitors"][1]["team"]["abbreviation"]
                         
@@ -224,17 +233,50 @@ class NBASchedule(commands.Cog):
                         
                         game_info = (
                             f"{self.get_team_display(away_team)} @ {self.get_team_display(home_team)}\n"
-                            f"{self.format_game_time(game_date)}\n"
+                            f"{self.format_game_time(next_game_date)}\n"
                             f"📺 {broadcast_info}\n"
                             f"🏟️ {venue}"
                         )
                         
                         embed.add_field(
-                            name=f"Game {len(embed.fields) + 1}",
+                            name="Game Details",
                             value=game_info,
                             inline=False
                         )
-                    #  
+
+                    else:
+                        # Show full schedule (existing code)
+                        embed = discord.Embed(
+                            title=f"🏀 Schedule for {team.title()}",
+                            color=discord.Color.blue()
+                        )
+
+                        for game_date, event in upcoming_games[:10]:
+                            competition = event["competitions"][0]
+                            home_team = competition["competitors"][0]["team"]["abbreviation"]
+                            away_team = competition["competitors"][1]["team"]["abbreviation"]
+                            
+                            broadcasts = competition.get("broadcasts", [])
+                            broadcast_info = "TBD"
+                            if broadcasts:
+                                broadcast_names = [b.get("names", [""])[0] for b in broadcasts]
+                                broadcast_info = ", ".join(filter(None, broadcast_names))
+
+                            venue = competition.get("venue", {}).get("fullName", "TBD")
+                            
+                            game_info = (
+                                f"{self.get_team_display(away_team)} @ {self.get_team_display(home_team)}\n"
+                                f"{self.format_game_time(game_date)}\n"
+                                f"📺 {broadcast_info}\n"
+                                f"🏟️ {venue}"
+                            )
+                            
+                            embed.add_field(
+                                name=f"Game {len(embed.fields) + 1}",
+                                value=game_info,
+                                inline=False
+                            )
+
                     await interaction.followup.send(embed=embed)
 
         except Exception as e:
