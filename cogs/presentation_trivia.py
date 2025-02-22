@@ -201,37 +201,34 @@ class PresentationTrivia(commands.Cog):
             # Calculate total chunks
             total_chunks = (len(content) + self.chunk_size - 1) // self.chunk_size
             
-            # Initialize tracking sets for this user if they don't exist
+            # Initialize or get the remaining chunks list for this user
             if user_id not in self.used_chunks:
-                self.used_chunks[user_id] = set()
-            if user_id not in self.used_questions:
-                self.used_questions[user_id] = set()
-
-            # Get all available chunks
-            available_chunks = set(range(total_chunks)) - self.used_chunks[user_id]
-            if not available_chunks:
+                # Create list of all chunk indices
+                self.used_chunks[user_id] = list(range(total_chunks))
+                # Shuffle the list initially
+                random.shuffle(self.used_chunks[user_id])
+            
+            # If no chunks left, we're done
+            if not self.used_chunks[user_id]:
                 print("All chunks have been used")
                 return []
 
-            # Select random unused chunk
-            chosen_chunk = random.choice(list(available_chunks))
+            # Pop the next chunk index from our shuffled list
+            chosen_chunk = self.used_chunks[user_id].pop()
             chunk_start = chosen_chunk * self.chunk_size
             
+            # Extract the chunk
+            content_chunk = content[chunk_start:chunk_start + self.chunk_size]
+            print(f"Processing chunk {chosen_chunk + 1}/{total_chunks}, length: {len(content_chunk)} characters")
+
             # Send processing message
             processing_embed = discord.Embed(
                 title="🤖 Processing Content",
-                description=f"Processing chunk {chosen_chunk + 1}/{total_chunks}...\nThis may take a moment.",
+                description=f"Processing chunk {chosen_chunk + 1}/{total_chunks}...\n" +
+                           f"Chunks remaining: {len(self.used_chunks[user_id])}/{total_chunks}",
                 color=discord.Color.blue()
             )
             processing_msg = await interaction.followup.send(embed=processing_embed)
-
-            # Extract the chunk
-            content_chunk = content[chunk_start:chunk_start + self.chunk_size]
-            print(f"Processing content chunk {chosen_chunk + 1}/{total_chunks}, length: {len(content_chunk)} characters")
-            
-            # Mark this chunk as used
-            chunk_key = f"{chunk_start}:{chunk_start + self.chunk_size}"
-            self.used_chunks[user_id].add(chunk_key)
 
             prompt = f"""You are a quiz generator. Generate multiple-choice questions about the key concepts from this content chunk.
 
@@ -516,26 +513,6 @@ Content chunk to use:
                     if not view.active:
                         break
 
-                    # Randomly select a position in the content
-                    if len(content) > self.chunk_size:
-                        max_start = len(content) - self.chunk_size
-                        content_position = random.randint(0, max_start)
-                    else:
-                        content_position = 0
-                        
-                    # Align to chunk boundaries (4000 character chunks)
-                    content_position = (content_position // self.chunk_size) * self.chunk_size
-                    
-                    # Check if we've used all possible chunks
-                    if len(self.used_chunks[interaction.user.id]) * self.chunk_size >= len(content):
-                        final_embed = discord.Embed(
-                            title="🎯 Quiz Complete!",
-                            description=f"All content has been covered!\nFinal Score: {score}/{current_question}",
-                            color=discord.Color.gold()
-                        )
-                        await interaction.followup.send(embed=final_embed)
-                        break
-                        
                     questions = await self.generate_questions(
                         content, 
                         content_position,
@@ -582,12 +559,12 @@ Content chunk to use:
                 
                 if not view.active:  # If trivia was ended
                     final_embed = discord.Embed(
-                        title="🎯 Trivia Ended!",
-                        description=f"Final Score: {score}/{current_question}\nThanks for playing!",
+                        title="🎯 Quiz Complete!",
+                        description=f"All content has been covered!\nFinal Score: {score}/{current_question}",
                         color=discord.Color.gold()
                     )
                     await interaction.followup.send(embed=final_embed)
-                    return  # Exit immediately
+                    break
                     
                 if not reaction:  # If we timed out
                     timeout_embed = discord.Embed(
