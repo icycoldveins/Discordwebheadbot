@@ -34,6 +34,10 @@ class PresentationTriviaView(discord.ui.View):
             for item in self.children:
                 item.disabled = True
             await interaction.message.edit(view=self)
+            
+            # Clear user's cache when they end trivia
+            self.cog.clear_user_cache(interaction.user.id)
+            
             await interaction.response.send_message("Trivia ended by user.")
         else:
             await interaction.response.send_message("Only the person who started the trivia can end it.", ephemeral=True)
@@ -132,65 +136,13 @@ class PresentationTrivia(commands.Cog):
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         self.model = genai.GenerativeModel('gemini-pro')
         
-        # Add cache limits
-        self.MAX_USERS = 1000           # Maximum number of users to store
-        self.MAX_CONTENT_SIZE = 100000  # Maximum content size per user
-        self.CLEANUP_DELAY = 3600       # Cleanup after 1 hour of inactivity
-        
-        # Add content cache dictionary with timestamps
-        self.user_content = {}          # {user_id: {'content': str, 'last_access': timestamp}}
-        self.used_chunks = {}           # {user_id: set of chunk positions}
-        self.used_questions = {}        # {user_id: set of question hashes}
+        # Simplified cache structure
+        self.user_content = {}          # {user_id: str}  # Just store the content string
+        self.chunk_cache = {}           # Quiz-specific cache
+        self.used_questions = {}        # Quiz-specific cache
         self.chunk_size = 4000          # Size of content chunk to process at a time
+        self.MAX_CONTENT_SIZE = 100000  # Maximum content size per user
         
-        # Start cleanup task
-        self.cleanup_task = None
-        
-    async def cog_load(self):
-        """Start cleanup task when cog loads"""
-        self.cleanup_task = self.bot.loop.create_task(self._cleanup_inactive_sessions())
-        
-    async def cog_unload(self):
-        """Cancel cleanup task when cog unloads"""
-        if self.cleanup_task:
-            self.cleanup_task.cancel()
-            
-    async def _cleanup_inactive_sessions(self):
-        """Periodic cleanup of inactive sessions"""
-        while True:
-            try:
-                current_time = time.time()
-                # Clean up inactive sessions
-                inactive_users = [
-                    user_id for user_id, data in self.user_content.items()
-                    if current_time - data['last_access'] > self.CLEANUP_DELAY
-                ]
-                
-                for user_id in inactive_users:
-                    self.user_content.pop(user_id, None)
-                    self.used_chunks.pop(user_id, None)
-                    self.used_questions.pop(user_id, None)
-                    
-                # Enforce maximum user limit
-                if len(self.user_content) > self.MAX_USERS:
-                    # Remove oldest accessed users
-                    sorted_users = sorted(
-                        self.user_content.items(),
-                        key=lambda x: x[1]['last_access']
-                    )
-                    users_to_remove = sorted_users[:len(self.user_content) - self.MAX_USERS]
-                    
-                    for user_id, _ in users_to_remove:
-                        self.user_content.pop(user_id, None)
-                        self.used_chunks.pop(user_id, None)
-                        self.used_questions.pop(user_id, None)
-                        
-                await asyncio.sleep(300)  # Check every 5 minutes
-                
-            except Exception as e:
-                print(f"Error in cleanup task: {e}")
-                await asyncio.sleep(60)  # Wait a minute before retrying
-
     async def generate_questions(self, content: str, start_pos: int = 0, user_id: int = None, interaction: discord.Interaction = None) -> list:
         """Generate questions using Gemini AI from a random unused chunk of content"""
         try:
@@ -202,19 +154,19 @@ class PresentationTrivia(commands.Cog):
             total_chunks = (len(content) + self.chunk_size - 1) // self.chunk_size
             
             # Initialize or get the remaining chunks list for this user
-            if user_id not in self.used_chunks:
+            if user_id not in self.chunk_cache:
                 # Create list of all chunk indices
-                self.used_chunks[user_id] = list(range(total_chunks))
+                self.chunk_cache[user_id] = {'chunks': list(range(total_chunks)), 'total_chunks': total_chunks, 'processed': {}, 'last_access': time.time()}
                 # Shuffle the list initially
-                random.shuffle(self.used_chunks[user_id])
+                random.shuffle(self.chunk_cache[user_id]['chunks'])
             
             # If no chunks left, we're done
-            if not self.used_chunks[user_id]:
+            if not self.chunk_cache[user_id]['chunks']:
                 print("All chunks have been used")
                 return []
 
             # Pop the next chunk index from our shuffled list
-            chosen_chunk = self.used_chunks[user_id].pop()
+            chosen_chunk = self.chunk_cache[user_id]['chunks'].pop()
             chunk_start = chosen_chunk * self.chunk_size
             
             # Extract the chunk
@@ -225,7 +177,7 @@ class PresentationTrivia(commands.Cog):
             processing_embed = discord.Embed(
                 title="🤖 Processing Content",
                 description=f"Processing chunk {chosen_chunk + 1}/{total_chunks}...\n" +
-                           f"Chunks remaining: {len(self.used_chunks[user_id])}/{total_chunks}",
+                           f"Chunks remaining: {len(self.chunk_cache[user_id]['chunks'])}/{total_chunks}",
                 color=discord.Color.blue()
             )
             processing_msg = await interaction.followup.send(embed=processing_embed)
@@ -327,6 +279,7 @@ Content chunk to use:
                 
                 if valid_questions:
                     random.shuffle(valid_questions)
+                    self.chunk_cache[user_id]['processed'][chosen_chunk] = valid_questions
                     return valid_questions
                 
             except Exception as e:
@@ -473,8 +426,17 @@ Content chunk to use:
         except asyncio.TimeoutError:
             await interaction.followup.send("No content received within 5 minutes. Please try again.")
 
+    def clear_user_cache(self, user_id: int):
+        """Clear quiz-specific cache for a user"""
+        self.chunk_cache.pop(user_id, None)
+        self.used_questions.pop(user_id, None)
+        # Note: We don't clear user_content here to preserve it for future use
+
     async def start_quiz(self, interaction: discord.Interaction, content: str):
         """Start the quiz with the provided content"""
+        # Clear quiz-specific cache
+        self.clear_user_cache(interaction.user.id)
+        
         # Check content size
         if len(content) > self.MAX_CONTENT_SIZE:
             await interaction.followup.send(
@@ -482,17 +444,13 @@ Content chunk to use:
             )
             return
             
-        # Update user content with timestamp
-        self.user_content[interaction.user.id] = {
-            'content': content,
-            'last_access': time.time()
-        }
+        # Store the content for future use
+        self.user_content[interaction.user.id] = content
+        
+        # Initialize quiz-specific tracking data
+        self.used_questions[interaction.user.id] = set()
         
         try:
-            # Clear previous tracking data for this user
-            self.used_chunks[interaction.user.id] = set()
-            self.used_questions[interaction.user.id] = set()
-            
             view = PresentationTriviaView(self, interaction)
             score = 0
             current_question = 0
