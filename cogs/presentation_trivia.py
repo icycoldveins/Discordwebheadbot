@@ -14,6 +14,7 @@ import json
 import traceback
 import re
 import time
+from typing import Optional
 # 
 
 class PresentationTriviaView(discord.ui.View):
@@ -479,8 +480,14 @@ Content chunk to use:
                     )
                     
                     if not questions:
-                        # If we couldn't generate questions from this chunk, try another random position
-                        continue
+                        # Add this condition to exit when no more questions can be generated
+                        final_embed = discord.Embed(
+                            title="🎯 Quiz Complete!",
+                            description=f"All content has been covered!\nFinal Score: {score}/{current_question}",
+                            color=discord.Color.gold()
+                        )
+                        await interaction.followup.send(embed=final_embed)
+                        break
 
                 # Get current question
                 question = questions.pop(0)  # Take the next question
@@ -575,6 +582,46 @@ Content chunk to use:
             if view.active:  # Only show error if trivia wasn't manually ended
                 traceback.print_exc()
                 await interaction.followup.send(f"An error occurred: {str(e)}")
+
+    async def get_next_question(self, user_id: int) -> Optional[dict]:
+        content = self.user_content.get(user_id)
+        if not content:
+            return None
+
+        # Get or create chunks for this content
+        chunks = self.chunk_cache.get(user_id)
+        if not chunks:
+            chunks = [content[i:i + self.chunk_size] for i in range(0, len(content), self.chunk_size)]
+            self.chunk_cache[user_id] = chunks
+
+        used_questions = self.used_questions.get(user_id, set())
+        
+        # Try each chunk until we get a valid question
+        if chunks:  # Only if we have chunks left
+            # Swap random chunk with last chunk and pop
+            if len(chunks) > 1:  # Only need to swap if more than 1 chunk
+                rand_idx = random.randint(0, len(chunks) - 2)  # -2 to avoid picking last index
+                chunks[rand_idx], chunks[-1] = chunks[-1], chunks[rand_idx]
+            chunk = chunks.pop()  # Always pop from end
+            
+            try:
+                # Generate questions from this chunk
+                questions = await self.generate_questions(chunk)
+                
+                # Find unused questions
+                available_questions = [q for q in questions if q['id'] not in used_questions]
+                if available_questions:
+                    # Same swap-and-pop for question selection
+                    if len(available_questions) > 1:
+                        rand_idx = random.randint(0, len(available_questions) - 2)
+                        available_questions[rand_idx], available_questions[-1] = available_questions[-1], available_questions[rand_idx]
+                    question = available_questions.pop()
+                    used_questions.add(question['id'])
+                    self.used_questions[user_id] = used_questions
+                    return question
+                    
+            except Exception as e:
+                print(f"Error generating question: {e}")
 
 async def setup(bot):
     await bot.add_cog(PresentationTrivia(bot)) 
