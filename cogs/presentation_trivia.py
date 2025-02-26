@@ -135,7 +135,7 @@ class PresentationTrivia(commands.Cog):
         # Initialize Gemini
         load_dotenv()
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Simplified cache structure
         self.user_content = {}          # {user_id: str}  # Just store the content string
