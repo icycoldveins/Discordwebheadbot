@@ -120,7 +120,7 @@ class MCQuiz(commands.Cog):
         # Initialize Gemini like PresentationTrivia
         load_dotenv()
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         self.user_content = {}
         self.used_questions = {}
         self.active_quizzes = {}  # Track active quiz sessions
