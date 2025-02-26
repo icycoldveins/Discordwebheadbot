@@ -54,6 +54,7 @@ async def on_ready():
     await load_extensions()
     try:
         synced = await bot.tree.sync()
+        # 
         print(f"Synced {len(synced)} command(s)")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
